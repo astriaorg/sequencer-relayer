@@ -31,14 +31,8 @@ impl<'de> Deserialize<'de> for Hash {
 
 struct HashVisitor;
 
-impl<'de> Visitor<'de> for HashVisitor {
-    type Value = Hash;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str("a base64-encoded string")
-    }
-
-    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+impl HashVisitor {
+    fn decode_string<E>(self, value: &str) -> Result<Hash, E>
     where
         E: de::Error,
     {
@@ -51,19 +45,27 @@ impl<'de> Visitor<'de> for HashVisitor {
             ))),
         }
     }
+}
+
+impl<'de> Visitor<'de> for HashVisitor {
+    type Value = Hash;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("a base64-encoded string")
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        self.decode_string(value)
+    }
 
     fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
     where
         E: de::Error,
     {
-        let bytes_res = &general_purpose::STANDARD.decode(&value);
-        match bytes_res {
-            Ok(bytes) => Ok(Hash(bytes.to_vec())),
-            Err(e) => Err(E::custom(format!(
-                "failed to decode string {} from base64: {:?}",
-                &value, e
-            ))),
-        }
+        self.decode_string(&value)
     }
 }
 
