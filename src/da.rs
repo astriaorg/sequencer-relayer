@@ -55,9 +55,9 @@ impl DataAvailabilityClient for CelestiaClient {
     async fn submit_block(&self, block: SequencerBlock) -> Result<SubmitBlockResponse, Error> {
         // TODO: don't use json, use our own serializer
         let block_bytes = serde_json::to_string(&block).map_err(|e| anyhow!(e))?;
-        let namespace = "sequencer-relayer";
-        let fee = 1; // TODO
-        let gas_limit = 1000000; // TODO
+        let namespace = "0011223344556677"; // TODO; hash something to get this
+        let fee = 2_000; // TODO
+        let gas_limit = 90_000; // TODO
         let pay_for_data_response = self
             .0
             .submit_pay_for_data(namespace, &block_bytes.into(), fee, gas_limit)
