@@ -1,4 +1,3 @@
-
 name: Tests
 
 on: [pull_request]
@@ -53,3 +52,4 @@ jobs:
         with:
           command: clippy
           args: --all --all-targets -- -D warnings
+          
