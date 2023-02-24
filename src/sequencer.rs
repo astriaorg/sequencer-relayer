@@ -34,8 +34,7 @@ impl SequencerClient {
     ) -> Result<Resp, Error> {
         let response: ReqwestResponse = self.http_client.get(&endpoint).json(&req).send().await?;
         response
-            .error_for_status()
-            .map_err(|e| anyhow!(e))?
+            .error_for_status()?
             .json::<Resp>()
             .await
             .map_err(|e| anyhow!(e))

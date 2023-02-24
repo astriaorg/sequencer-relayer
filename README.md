@@ -28,6 +28,13 @@ make install
 bash scripts/single-node.sh
 ```
 
+Run a Celestia cluster:
+```
+git clone https://github.com/astriaorg/rs-cnc
+cd rs-cnc
+docker compose -f tests/docker/test-docker-compose.yml up -d bridge0
+```
+
 Then, you can run the unit tests:
 ```
 cargo test
