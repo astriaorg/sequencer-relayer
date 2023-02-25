@@ -46,7 +46,7 @@ jobs:
           command: build
           args: --all
       - name: Wait (REMOVE THIS LATER)
-        run: sleep 5
+        run: sleep 15
       - name: Test
         uses: actions-rs/cargo@v1
         with:
