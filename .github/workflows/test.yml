@@ -44,6 +44,8 @@ jobs:
         run: cargo build --all
       - name: Run tests
         run: cargo test --all
+      - name: Clean up Docker containers used for testing
+        run: ./tests/docker/cleanup-docker.sh
 
   fmt:
     name: fmt

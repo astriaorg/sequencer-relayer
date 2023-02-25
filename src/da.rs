@@ -1,9 +1,13 @@
 use anyhow::{anyhow, Error};
 use async_trait::async_trait;
-use rs_cnc::{CelestiaNodeClient, PayForDataResponse};
+use rs_cnc::{CelestiaNodeClient, NamespacedDataResponse, PayForDataResponse};
 use serde::{Deserialize, Serialize};
 
 use crate::types::Block;
+
+static DEFAULT_PFD_FEE: i64 = 2_000;
+static DEFAULT_PFD_GAS_LIMIT: u64 = 90_000;
+static DEFAULT_NAMESPACE: &str = "0011223344556677"; // TODO; hash something to get this
 
 /// SequencerBlock represents a sequencer layer block to be submitted to
 /// the DA layer.
@@ -13,7 +17,7 @@ use crate::types::Block;
 /// TODO: compression or a better serialization method?
 /// TODO: rename this b/c it's kind of confusing, types::Block is a cosmos-sdk block
 /// which is also a sequencer block in a way.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct SequencerBlock {
     txs: Vec<String>,
 }
@@ -35,10 +39,17 @@ impl From<Block> for SequencerBlock {
 #[derive(Deserialize, Debug)]
 pub struct SubmitBlockResponse(PayForDataResponse);
 
+#[derive(Deserialize, Debug)]
+pub struct CheckBlockAvailabilityResponse(NamespacedDataResponse);
+
 /// DataAvailabilityClient is able to submit and query blocks from the DA layer.
 #[async_trait]
 pub trait DataAvailabilityClient {
     async fn submit_block(&self, block: SequencerBlock) -> Result<SubmitBlockResponse, Error>;
+    async fn check_block_availability(
+        &self,
+        height: u64,
+    ) -> Result<CheckBlockAvailabilityResponse, Error>;
 }
 
 pub struct CelestiaClient(CelestiaNodeClient);
@@ -55,14 +66,24 @@ impl DataAvailabilityClient for CelestiaClient {
     async fn submit_block(&self, block: SequencerBlock) -> Result<SubmitBlockResponse, Error> {
         // TODO: don't use json, use our own serializer
         let block_bytes = serde_json::to_string(&block).map_err(|e| anyhow!(e))?;
-        let namespace = "0011223344556677"; // TODO; hash something to get this
-        let fee = 2_000; // TODO
-        let gas_limit = 90_000; // TODO
         let pay_for_data_response = self
             .0
-            .submit_pay_for_data(namespace, &block_bytes.into(), fee, gas_limit)
+            .submit_pay_for_data(
+                DEFAULT_NAMESPACE,
+                &block_bytes.into(),
+                DEFAULT_PFD_FEE,
+                DEFAULT_PFD_GAS_LIMIT,
+            )
             .await?;
         Ok(SubmitBlockResponse(pay_for_data_response))
+    }
+
+    async fn check_block_availability(
+        &self,
+        height: u64,
+    ) -> Result<CheckBlockAvailabilityResponse, Error> {
+        let namespaced_data_response = self.0.namespaced_data(DEFAULT_NAMESPACE, height).await?;
+        Ok(CheckBlockAvailabilityResponse(namespaced_data_response))
     }
 }
 
@@ -76,6 +97,14 @@ mod tests {
         let client = CelestiaClient::new(base_url).unwrap();
         let block = SequencerBlock::new();
         let resp = client.submit_block(block).await.unwrap();
+        println!("{:?}", resp);
+    }
+
+    #[tokio::test]
+    async fn check_block_availability() {
+        let base_url = "http://localhost:26659".to_string();
+        let client = CelestiaClient::new(base_url).unwrap();
+        let resp = client.check_block_availability(1u64).await.unwrap();
         println!("{:?}", resp);
     }
 }
