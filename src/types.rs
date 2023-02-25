@@ -12,33 +12,43 @@ use std::fmt;
 #[derive(Serialize, Debug)]
 pub struct EmptyRequest {}
 
-pub struct Hash(Vec<u8>);
+#[derive(Clone, PartialEq)]
+pub struct Base64String(pub Vec<u8>);
 
-impl fmt::Debug for Hash {
+impl fmt::Debug for Base64String {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&hex::encode(&self.0))
     }
 }
 
-impl<'de> Deserialize<'de> for Hash {
-    fn deserialize<D>(deserializer: D) -> Result<Hash, D::Error>
+impl Serialize for Base64String {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        D: Deserializer<'de>,
+        S: serde::Serializer,
     {
-        deserializer.deserialize_string(HashVisitor)
+        serializer.serialize_str(&general_purpose::STANDARD.encode(&self.0))
     }
 }
 
-struct HashVisitor;
+impl<'de> Deserialize<'de> for Base64String {
+    fn deserialize<D>(deserializer: D) -> Result<Base64String, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_string(Base64StringVisitor)
+    }
+}
 
-impl HashVisitor {
-    fn decode_string<E>(self, value: &str) -> Result<Hash, E>
+struct Base64StringVisitor;
+
+impl Base64StringVisitor {
+    fn decode_string<E>(self, value: &str) -> Result<Base64String, E>
     where
         E: de::Error,
     {
         let bytes_res = &general_purpose::STANDARD.decode(value);
         match bytes_res {
-            Ok(bytes) => Ok(Hash(bytes.to_vec())),
+            Ok(bytes) => Ok(Base64String(bytes.to_vec())),
             Err(e) => Err(E::custom(format!(
                 "failed to decode string {} from base64: {:?}",
                 value, e
@@ -47,8 +57,8 @@ impl HashVisitor {
     }
 }
 
-impl<'de> Visitor<'de> for HashVisitor {
-    type Value = Hash;
+impl<'de> Visitor<'de> for Base64StringVisitor {
+    type Value = Base64String;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str("a base64-encoded string")
@@ -77,7 +87,7 @@ pub struct LatestBlockResponse {
 
 #[derive(Deserialize, Debug)]
 pub struct BlockId {
-    pub hash: Hash,
+    pub hash: Base64String,
     // TODO: part_set_header
 }
 
@@ -95,18 +105,18 @@ pub struct Header {
     pub height: String,
     pub time: String,
     // TODO: last_block_id
-    pub last_commit_hash: Hash,
-    pub data_hash: Hash,
-    pub validators_hash: Hash,
-    pub next_validators_hash: Hash,
-    pub consensus_hash: Hash,
-    pub app_hash: Hash,
-    pub last_results_hash: Hash,
-    pub evidence_hash: Hash,
-    pub proposer_address: Hash,
+    pub last_commit_hash: Base64String,
+    pub data_hash: Base64String,
+    pub validators_hash: Base64String,
+    pub next_validators_hash: Base64String,
+    pub consensus_hash: Base64String,
+    pub app_hash: Base64String,
+    pub last_results_hash: Base64String,
+    pub evidence_hash: Base64String,
+    pub proposer_address: Base64String,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct Data {
-    pub txs: Vec<String>,
+    pub txs: Vec<Base64String>,
 }

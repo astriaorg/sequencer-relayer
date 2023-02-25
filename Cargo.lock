@@ -629,7 +629,7 @@ dependencies = [
 [[package]]
 name = "rs-cnc"
 version = "0.1.0"
-source = "git+https://github.com/astriaorg/rs-cnc.git?branch=noot/fixes#50cdfea974041c01ec3e84ac260bfa15321deda6"
+source = "git+https://github.com/astriaorg/rs-cnc.git?branch=noot/namespaced-shares#377f3d6ac54f03af9630f09051849e44feec531f"
 dependencies = [
  "anyhow",
  "base64",

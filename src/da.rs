@@ -1,9 +1,9 @@
 use anyhow::{anyhow, Error};
 use async_trait::async_trait;
-use rs_cnc::{CelestiaNodeClient, NamespacedDataResponse, PayForDataResponse};
+use rs_cnc::{CelestiaNodeClient, NamespacedSharesResponse, PayForDataResponse};
 use serde::{Deserialize, Serialize};
 
-use crate::types::Block;
+use crate::types::{Base64String, Block};
 
 static DEFAULT_PFD_FEE: i64 = 2_000;
 static DEFAULT_PFD_GAS_LIMIT: u64 = 90_000;
@@ -19,7 +19,7 @@ static DEFAULT_NAMESPACE: &str = "0011223344556677"; // TODO; hash something to 
 /// which is also a sequencer block in a way.
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct SequencerBlock {
-    txs: Vec<String>,
+    txs: Vec<Base64String>,
 }
 
 impl SequencerBlock {
@@ -37,10 +37,10 @@ impl From<Block> for SequencerBlock {
 }
 
 #[derive(Deserialize, Debug)]
-pub struct SubmitBlockResponse(PayForDataResponse);
+pub struct SubmitBlockResponse(pub PayForDataResponse);
 
 #[derive(Deserialize, Debug)]
-pub struct CheckBlockAvailabilityResponse(NamespacedDataResponse);
+pub struct CheckBlockAvailabilityResponse(pub NamespacedSharesResponse);
 
 /// DataAvailabilityClient is able to submit and query blocks from the DA layer.
 #[async_trait]
@@ -50,6 +50,7 @@ pub trait DataAvailabilityClient {
         &self,
         height: u64,
     ) -> Result<CheckBlockAvailabilityResponse, Error>;
+    async fn get_blocks(&self, height: u64) -> Result<Vec<SequencerBlock>, Error>;
 }
 
 pub struct CelestiaClient(CelestiaNodeClient);
@@ -82,29 +83,60 @@ impl DataAvailabilityClient for CelestiaClient {
         &self,
         height: u64,
     ) -> Result<CheckBlockAvailabilityResponse, Error> {
+        let resp = self.0.namespaced_shares(DEFAULT_NAMESPACE, height).await?;
+        Ok(CheckBlockAvailabilityResponse(resp))
+    }
+
+    async fn get_blocks(&self, height: u64) -> Result<Vec<SequencerBlock>, Error> {
         let namespaced_data_response = self.0.namespaced_data(DEFAULT_NAMESPACE, height).await?;
-        Ok(CheckBlockAvailabilityResponse(namespaced_data_response))
+
+        let blocks = namespaced_data_response
+            .data
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|d| {
+                let block: Option<SequencerBlock> = serde_json::from_slice(&d.0).ok();
+                block
+            })
+            .collect();
+        Ok(blocks)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{CelestiaClient, DataAvailabilityClient, SequencerBlock};
+    use crate::types::Base64String;
 
     #[tokio::test]
-    async fn test_submit_block() {
-        let base_url = "http://localhost:26659".to_string();
-        let client = CelestiaClient::new(base_url).unwrap();
-        let block = SequencerBlock::new();
-        let resp = client.submit_block(block).await.unwrap();
-        println!("{:?}", resp);
-    }
+    async fn test_celestia_client() {
+        // unfortunately, this needs to be all one test for now, since
+        // submitting multiple blocks to celestia concurrently returns in
+        // "incorrect account sequence" errors.
 
-    #[tokio::test]
-    async fn check_block_availability() {
+        // test submit_block
         let base_url = "http://localhost:26659".to_string();
         let client = CelestiaClient::new(base_url).unwrap();
-        let resp = client.check_block_availability(1u64).await.unwrap();
-        println!("{:?}", resp);
+        let tx = Base64String(b"noot_was_here".to_vec());
+        let block = SequencerBlock {
+            txs: vec![tx.clone()],
+        };
+        let submit_block_resp = client.submit_block(block).await.unwrap();
+
+        // test check_block_availability
+        let resp = client
+            .check_block_availability(submit_block_resp.0.height.unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.0.height, submit_block_resp.0.height.unwrap());
+
+        // test get_blocks
+        let resp = client
+            .get_blocks(submit_block_resp.0.height.unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.len(), 1);
+        assert_eq!(resp[0].txs.len(), 1);
+        assert_eq!(resp[0].txs[0], tx);
     }
 }
