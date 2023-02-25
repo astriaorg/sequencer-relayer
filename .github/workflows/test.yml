@@ -41,9 +41,15 @@ jobs:
       - name: Start Celestia core app and bridge node
         run: docker-compose -f docker/test-docker-compose.yml up -d bridge0
       - name: Build
-        run: cargo build --all
-      - name: Run tests
-        run: cargo test --all
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --all
+      - name: Test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -- --nocapture --color always
       - name: Clean up Docker containers used for testing
         run: ./tests/docker/cleanup-docker.sh
 
