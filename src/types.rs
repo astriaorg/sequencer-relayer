@@ -80,7 +80,7 @@ impl<'de> Visitor<'de> for Base64StringVisitor {
 }
 
 #[derive(Deserialize, Debug)]
-pub struct LatestBlockResponse {
+pub struct BlockResponse {
     pub block_id: BlockId,
     pub block: Block,
 }
