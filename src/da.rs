@@ -111,7 +111,7 @@ mod tests {
     #[tokio::test]
     async fn test_celestia_client() {
         // unfortunately, this needs to be all one test for now, since
-        // submitting multiple blocks to celestia concurrently returns in
+        // submitting multiple blocks to celestia concurrently returns
         // "incorrect account sequence" errors.
 
         // test submit_block
