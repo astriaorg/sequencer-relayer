@@ -51,7 +51,7 @@ jobs:
           command: test
           args: -- --nocapture --color always
       - name: Clean up Docker containers used for testing
-        run: ./tests/docker/cleanup-docker.sh
+        run: ./docker/cleanup-docker.sh
 
   fmt:
     name: fmt
