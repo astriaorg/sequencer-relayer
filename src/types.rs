@@ -46,14 +46,15 @@ impl Base64StringVisitor {
     where
         E: de::Error,
     {
-        let bytes_res = &general_purpose::STANDARD.decode(value);
-        match bytes_res {
-            Ok(bytes) => Ok(Base64String(bytes.to_vec())),
-            Err(e) => Err(E::custom(format!(
-                "failed to decode string {} from base64: {:?}",
-                value, e
-            ))),
-        }
+        general_purpose::STANDARD
+            .decode(value)
+            .map(Base64String)
+            .map_err(|e| {
+                E::custom(format!(
+                    "failed to decode string {} from base64: {:?}",
+                    value, e
+                ))
+            })
     }
 }
 
