@@ -22,6 +22,11 @@ struct Options {
     #[structopt(short, long, default_value = DEFAULT_CELESTIA_ENDPOINT)]
     celestia_endpoint: String,
 
+    /// Expected block time of the sequencer in milliseconds;
+    /// ie. how often we should poll the sequencer.
+    #[structopt(short, long, default_value = "1000")]
+    block_time: u64,
+
     /// Log level. One of debug, info, warn, or error
     #[structopt(short, long, default_value = "info")]
     log: String,
@@ -42,8 +47,7 @@ async fn main() {
     let da_client = CelestiaClient::new(options.celestia_endpoint)
         .expect("failed to create data availability client");
 
-    // TODO: determine block time from watching chain or allow cli option?
-    let sleep_duration = time::Duration::from_millis(1000);
+    let sleep_duration = time::Duration::from_millis(options.block_time);
     let mut highest_block_number = 0u64;
 
     loop {
