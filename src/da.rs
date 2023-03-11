@@ -46,7 +46,7 @@ impl From<Block> for SequencerBlock {
             match SequencerMsg::parse_from_bytes(&tx.0) {
                 Ok(msg) => {
                     let namespace = msg.chain_id;
-                    if namespace.len() == 0 {
+                    if namespace.is_empty() {
                         sequencer_txs.push(Base64String(msg.data));
                         continue;
                     }
@@ -232,7 +232,13 @@ impl DataAvailabilityClient for CelestiaClient {
             .data
             .unwrap_or_default()
             .iter()
-            .filter_map(|d| Some(SequencerNamespaceData::from_bytes(&d.0).unwrap()))
+            .filter_map(|d| {
+                if let Ok(data) = SequencerNamespaceData::from_bytes(&d.0) {
+                    Some(data)
+                } else {
+                    None
+                }
+            })
             .collect();
 
         let mut blocks = vec![];
@@ -253,7 +259,13 @@ impl DataAvailabilityClient for CelestiaClient {
                     .data
                     .unwrap_or_default()
                     .iter()
-                    .filter_map(|d| Some(RollupNamespaceData::from_bytes(&d.0).unwrap()))
+                    .filter_map(|d| {
+                        if let Ok(data) = RollupNamespaceData::from_bytes(&d.0) {
+                            Some(data)
+                        } else {
+                            None
+                        }
+                    })
                     .collect();
 
                 for rollup_tx in rollup_txs {

@@ -1,5 +1,4 @@
 use base64::{engine::general_purpose, Engine as _};
-use hex;
 use serde::{
     de::{self, Visitor},
     Deserialize, Deserializer, Serialize,
@@ -15,15 +14,15 @@ pub struct EmptyRequest {}
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Base64String(pub Vec<u8>);
 
-impl Base64String {
-    pub(crate) fn to_string(&self) -> String {
-        general_purpose::STANDARD.encode(&self.0)
+impl std::fmt::Display for Base64String {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", general_purpose::STANDARD.encode(&self.0))
     }
 }
 
 impl fmt::Debug for Base64String {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&hex::encode(&self.0))
+        f.write_str(&general_purpose::STANDARD.encode(&self.0))
     }
 }
 
