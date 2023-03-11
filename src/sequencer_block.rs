@@ -1,7 +1,9 @@
 use anyhow::Error;
 use base64::{engine::general_purpose, Engine as _};
+use hex;
 use protobuf::Message;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use tracing::{debug, info, warn};
 
@@ -10,6 +12,14 @@ use crate::proto::tx::{TxBody, TxRaw};
 use crate::types::{Base64String, Block};
 
 static SEQUENCER_TYPE_URL: &str = "/SequencerMsg";
+
+// get_namespace returns an 8-byte namespace given a byte slice.
+pub(crate) fn get_namespace(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    let result = hasher.finalize();
+    hex::encode(&result[0..8])
+}
 
 /// SequencerBlock represents a sequencer layer block to be submitted to
 /// the DA layer.
@@ -22,7 +32,8 @@ static SEQUENCER_TYPE_URL: &str = "/SequencerMsg";
 pub struct SequencerBlock {
     pub block_hash: Base64String,
     pub sequencer_txs: Vec<Base64String>, // TODO: do we need this?
-    pub rollup_txs: HashMap<Base64String, Vec<Base64String>>,
+    /// namespace -> rollup txs
+    pub rollup_txs: HashMap<String, Vec<Base64String>>,
 }
 
 impl SequencerBlock {
@@ -35,7 +46,7 @@ impl SequencerBlock {
         let mut rollup_txs = HashMap::new();
 
         for tx in b.data.txs.iter() {
-            info!(
+            debug!(
                 "parsing tx: {:?}",
                 general_purpose::STANDARD.encode(tx.0.clone())
             );
@@ -52,7 +63,9 @@ impl SequencerBlock {
                     continue;
                 }
 
-                let txs = rollup_txs.entry(Base64String(namespace)).or_insert(vec![]);
+                let txs = rollup_txs
+                    .entry(get_namespace(&namespace))
+                    .or_insert(vec![]);
                 txs.push(tx.clone());
             }
         }
