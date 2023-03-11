@@ -7,6 +7,7 @@ use std::{str::FromStr, thread, time};
 use sequencer_relayer::{
     da::{CelestiaClient, DataAvailabilityClient},
     sequencer::SequencerClient,
+    sequencer_block::SequencerBlock,
 };
 
 pub const DEFAULT_SEQUENCER_ENDPOINT: &str = "http://localhost:1317";
@@ -73,7 +74,16 @@ async fn main() {
                 info!("got block with height {} from sequencer", height);
                 highest_block_number = height;
                 let tx_count = resp.block.data.txs.len();
-                match da_client.submit_block(resp.block.into()).await {
+                let sequencer_block = match SequencerBlock::from_cosmos_block(resp.block) {
+                    Ok(block) => block,
+                    Err(e) => {
+                        warn!("failed to convert block to DA block: {:?}", e);
+                        thread::sleep(sleep_duration);
+                        continue;
+                    }
+                };
+
+                match da_client.submit_block(sequencer_block).await {
                     Ok(_) => info!(
                         "submitted block {} to DA layer: tx count={}",
                         height, &tx_count

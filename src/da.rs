@@ -1,70 +1,15 @@
 use anyhow::{anyhow, Error};
 use async_trait::async_trait;
-use protobuf::Message;
 use rs_cnc::{CelestiaNodeClient, NamespacedSharesResponse, PayForDataResponse};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tracing::warn;
 
-use crate::proto::msg::SequencerMsg;
-use crate::types::{Base64String, Block};
+use crate::sequencer_block::SequencerBlock;
+use crate::types::Base64String;
 
 static DEFAULT_PFD_FEE: i64 = 2_000;
 static DEFAULT_PFD_GAS_LIMIT: u64 = 90_000;
 static DEFAULT_NAMESPACE: &str = "0011223344556677"; // TODO; hash something to get this
-
-/// SequencerBlock represents a sequencer layer block to be submitted to
-/// the DA layer.
-/// Currently, it consists of the Block.Data field of the cosmos-sdk block
-/// returned by a sequencer, which contains the block's transactions.
-/// TODO: compression or a better serialization method?
-/// TODO: rename this b/c it's kind of confusing, types::Block is a cosmos-sdk block
-/// which is also a sequencer block in a way.
-#[derive(Serialize, Deserialize, Debug)]
-pub struct SequencerBlock {
-    block_hash: Base64String,
-    sequencer_txs: Vec<Base64String>,
-    rollup_txs: HashMap<Base64String, Vec<Base64String>>,
-}
-
-// impl SequencerBlock {
-//     /// new returns a new empty SequencerBlock.
-//     pub fn new() -> Self {
-//         SequencerBlock { sequencer_txs: vec![], rollup_txs: HashMap::new() }
-//     }
-// }
-
-impl From<Block> for SequencerBlock {
-    fn from(b: Block) -> Self {
-        // we unwrap generic txs into rollup-specific txs here,
-        // and namespace them correspondingly
-
-        let mut sequencer_txs = vec![]; // todo
-        let mut rollup_txs = HashMap::new();
-
-        for tx in b.data.txs.iter() {
-            match SequencerMsg::parse_from_bytes(&tx.0) {
-                Ok(msg) => {
-                    let namespace = msg.chain_id;
-                    if namespace.is_empty() {
-                        sequencer_txs.push(Base64String(msg.data));
-                        continue;
-                    }
-
-                    let txs = rollup_txs.entry(Base64String(namespace)).or_insert(vec![]);
-                    txs.push(tx.clone());
-                }
-                Err(e) => warn!("failed to parse tx: {}", e),
-            }
-        }
-
-        Self {
-            block_hash: b.header.data_hash, // TODO: is this the right hash?
-            sequencer_txs,
-            rollup_txs,
-        }
-    }
-}
 
 #[derive(Deserialize, Debug)]
 pub struct SubmitDataResponse(pub PayForDataResponse);
