@@ -1,3 +1,5 @@
+// these types are copy pasted from here: https://github.com/cosmos/cosmos-sdk/blob/v0.44.0/proto/cosmos/tx/v1beta1/tx.proto
+
 syntax = "proto3";
 import "google/protobuf/any.proto";
 
