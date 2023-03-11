@@ -1,6 +1,4 @@
 syntax = "proto3";
-//option go_package = "github.com/histolabs/metro/pb";
-package metro.pb;
 import "google/protobuf/any.proto";
 
 // TxRaw is a variant of Tx that pins the signer's exact binary representation

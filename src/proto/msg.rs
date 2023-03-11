@@ -267,10 +267,10 @@ impl ::protobuf::reflect::ProtobufValue for SequencerMsg {
 }
 
 static file_descriptor_proto_data: &'static [u8] = b"\
-    \n\tmsg.proto\x12\x08metro.pb\"h\n\x0cSequencerMsg\x12\x1b\n\x08chain_id\
-    \x18\x01\x20\x01(\x0cR\x07chainIdB\0\x12\x14\n\x04data\x18\x02\x20\x01(\
-    \x0cR\x04dataB\0\x12#\n\x0cfrom_address\x18\x03\x20\x01(\tR\x0bfromAddre\
-    ssB\0:\0B\0b\x06proto3\
+    \n\tmsg.proto\"h\n\x0cSequencerMsg\x12\x1b\n\x08chain_id\x18\x01\x20\x01\
+    (\x0cR\x07chainIdB\0\x12\x14\n\x04data\x18\x02\x20\x01(\x0cR\x04dataB\0\
+    \x12#\n\x0cfrom_address\x18\x03\x20\x01(\tR\x0bfromAddressB\0:\0B\0b\x06\
+    proto3\
 ";
 
 static file_descriptor_proto_lazy: ::protobuf::rt::LazyV2<::protobuf::descriptor::FileDescriptorProto> = ::protobuf::rt::LazyV2::INIT;

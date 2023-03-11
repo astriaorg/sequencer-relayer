@@ -289,7 +289,7 @@ impl TxBody {
         ::std::default::Default::default()
     }
 
-    // repeated .metro.pb.Message messages = 1;
+    // repeated .Message messages = 1;
 
 
     pub fn get_messages(&self) -> &[Message] {
@@ -808,18 +808,18 @@ impl ::protobuf::reflect::ProtobufValue for Message {
 }
 
 static file_descriptor_proto_data: &'static [u8] = b"\
-    \n\x08tx.proto\x12\x08metro.pb\x1a\x19google/protobuf/any.proto\"v\n\x05\
-    TxRaw\x12\x1f\n\nbody_bytes\x18\x01\x20\x01(\x0cR\tbodyBytesB\0\x12(\n\
-    \x0fauth_info_bytes\x18\x02\x20\x01(\x0cR\rauthInfoBytesB\0\x12\x20\n\ns\
-    ignatures\x18\x03\x20\x03(\x0cR\nsignaturesB\0:\0\"\x9e\x02\n\x06TxBody\
-    \x12/\n\x08messages\x18\x01\x20\x03(\x0b2\x11.metro.pb.MessageR\x08messa\
-    gesB\0\x12\x14\n\x04memo\x18\x02\x20\x01(\tR\x04memoB\0\x12'\n\x0etimeou\
-    t_height\x18\x03\x20\x01(\x04R\rtimeoutHeightB\0\x12D\n\x11extension_opt\
-    ions\x18\xff\x07\x20\x03(\x0b2\x14.google.protobuf.AnyR\x10extensionOpti\
-    onsB\0\x12\\\n\x1enon_critical_extension_options\x18\xff\x0f\x20\x03(\
-    \x0b2\x14.google.protobuf.AnyR\x1bnonCriticalExtensionOptionsB\0:\0\"@\n\
-    \x07Message\x12\x1b\n\x08type_url\x18\x01\x20\x01(\tR\x07typeUrlB\0\x12\
-    \x16\n\x05value\x18\x02\x20\x01(\x0cR\x05valueB\0:\0B\0b\x06proto3\
+    \n\x08tx.proto\x1a\x19google/protobuf/any.proto\"v\n\x05TxRaw\x12\x1f\n\
+    \nbody_bytes\x18\x01\x20\x01(\x0cR\tbodyBytesB\0\x12(\n\x0fauth_info_byt\
+    es\x18\x02\x20\x01(\x0cR\rauthInfoBytesB\0\x12\x20\n\nsignatures\x18\x03\
+    \x20\x03(\x0cR\nsignaturesB\0:\0\"\x95\x02\n\x06TxBody\x12&\n\x08message\
+    s\x18\x01\x20\x03(\x0b2\x08.MessageR\x08messagesB\0\x12\x14\n\x04memo\
+    \x18\x02\x20\x01(\tR\x04memoB\0\x12'\n\x0etimeout_height\x18\x03\x20\x01\
+    (\x04R\rtimeoutHeightB\0\x12D\n\x11extension_options\x18\xff\x07\x20\x03\
+    (\x0b2\x14.google.protobuf.AnyR\x10extensionOptionsB\0\x12\\\n\x1enon_cr\
+    itical_extension_options\x18\xff\x0f\x20\x03(\x0b2\x14.google.protobuf.A\
+    nyR\x1bnonCriticalExtensionOptionsB\0:\0\"@\n\x07Message\x12\x1b\n\x08ty\
+    pe_url\x18\x01\x20\x01(\tR\x07typeUrlB\0\x12\x16\n\x05value\x18\x02\x20\
+    \x01(\x0cR\x05valueB\0:\0B\0b\x06proto3\
 ";
 
 static file_descriptor_proto_lazy: ::protobuf::rt::LazyV2<::protobuf::descriptor::FileDescriptorProto> = ::protobuf::rt::LazyV2::INIT;

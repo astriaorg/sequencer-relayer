@@ -13,6 +13,7 @@ static DEFAULT_PFD_FEE: i64 = 2_000;
 static DEFAULT_PFD_GAS_LIMIT: u64 = 90_000;
 
 lazy_static! {
+    #[derive(Hash, Eq, PartialEq, Debug)]
     static ref DEFAULT_NAMESPACE: String = get_namespace(b"sequencer");
 }
 
@@ -262,7 +263,7 @@ mod tests {
         let submit_block_resp = client.submit_block(block).await.unwrap();
         let height = submit_block_resp
             .namespace_to_block_num
-            .get(DEFAULT_NAMESPACE)
+            .get(&DEFAULT_NAMESPACE.to_string())
             .unwrap()
             .unwrap();
 

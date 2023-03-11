@@ -23,8 +23,6 @@ pub(crate) fn get_namespace(bytes: &[u8]) -> String {
 
 /// SequencerBlock represents a sequencer layer block to be submitted to
 /// the DA layer.
-/// Currently, it consists of the Block.Data field of the cosmos-sdk block
-/// returned by a sequencer, which contains the block's transactions.
 /// TODO: compression or a better serialization method?
 /// TODO: rename this b/c it's kind of confusing, types::Block is a cosmos-sdk block
 /// which is also a sequencer block in a way.
