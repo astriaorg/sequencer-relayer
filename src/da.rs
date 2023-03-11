@@ -1,16 +1,20 @@
 use anyhow::{anyhow, Error};
 use async_trait::async_trait;
+use lazy_static::lazy_static;
 use rs_cnc::{CelestiaNodeClient, NamespacedSharesResponse, PayForDataResponse};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::{debug, warn};
 
-use crate::sequencer_block::SequencerBlock;
+use crate::sequencer_block::{get_namespace, SequencerBlock};
 use crate::types::Base64String;
 
 static DEFAULT_PFD_FEE: i64 = 2_000;
 static DEFAULT_PFD_GAS_LIMIT: u64 = 90_000;
-static DEFAULT_NAMESPACE: &str = "0011223344556677"; // TODO; hash something to get this
+
+lazy_static! {
+    static ref DEFAULT_NAMESPACE: String = get_namespace(b"sequencer");
+}
 
 #[derive(Deserialize, Debug)]
 pub struct CheckBlockAvailabilityResponse(pub NamespacedSharesResponse);
@@ -144,9 +148,9 @@ impl DataAvailabilityClient for CelestiaClient {
 
         let bytes = sequencer_namespace_data.to_bytes()?;
         let resp = self
-            .submit_namespaced_data(DEFAULT_NAMESPACE, &bytes)
+            .submit_namespaced_data(&DEFAULT_NAMESPACE, &bytes)
             .await?;
-        namespace_to_block_num.insert(DEFAULT_NAMESPACE.to_string(), resp.0.height);
+        namespace_to_block_num.insert(DEFAULT_NAMESPACE.clone(), resp.0.height);
 
         Ok(SubmitBlockResponse {
             namespace_to_block_num,
@@ -157,12 +161,12 @@ impl DataAvailabilityClient for CelestiaClient {
         &self,
         height: u64,
     ) -> Result<CheckBlockAvailabilityResponse, Error> {
-        let resp = self.0.namespaced_shares(DEFAULT_NAMESPACE, height).await?;
+        let resp = self.0.namespaced_shares(&DEFAULT_NAMESPACE, height).await?;
         Ok(CheckBlockAvailabilityResponse(resp))
     }
 
     async fn get_blocks(&self, height: u64) -> Result<Vec<SequencerBlock>, Error> {
-        let namespaced_data_response = self.0.namespaced_data(DEFAULT_NAMESPACE, height).await?;
+        let namespaced_data_response = self.0.namespaced_data(&DEFAULT_NAMESPACE, height).await?;
 
         // retrieve all sequencer blocks stored at this height
         let sequencer_namespace_datas: Vec<SequencerNamespaceData> = namespaced_data_response
