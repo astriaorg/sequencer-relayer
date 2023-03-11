@@ -12,8 +12,14 @@ use std::fmt;
 #[derive(Serialize, Debug)]
 pub struct EmptyRequest {}
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Base64String(pub Vec<u8>);
+
+impl Base64String {
+    pub(crate) fn to_string(&self) -> String {
+        general_purpose::STANDARD.encode(&self.0)
+    }
+}
 
 impl fmt::Debug for Base64String {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
