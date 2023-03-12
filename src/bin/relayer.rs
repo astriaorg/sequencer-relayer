@@ -82,7 +82,8 @@ async fn main() {
                     }
                 };
 
-                let tx_count = sequencer_block.rollup_txs.len() + sequencer_block.sequencer_txs.len();
+                let tx_count =
+                    sequencer_block.rollup_txs.len() + sequencer_block.sequencer_txs.len();
                 match da_client.submit_block(sequencer_block).await {
                     Ok(_) => info!(
                         "submitted block {} to DA layer: tx count={}",
