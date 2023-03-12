@@ -261,6 +261,7 @@ mod tests {
             .insert(secondary_namespace.clone(), vec![secondary_tx.clone()]);
 
         let submit_block_resp = client.submit_block(block).await.unwrap();
+        #[allow(clippy::unnecessary_to_owned)]
         let height = submit_block_resp
             .namespace_to_block_num
             .get(&DEFAULT_NAMESPACE.to_string())
