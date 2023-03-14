@@ -1,9 +1,9 @@
 use anyhow::{anyhow, Error};
 use async_trait::async_trait;
-use lazy_static::lazy_static;
 use rs_cnc::{CelestiaNodeClient, NamespacedSharesResponse, PayForDataResponse};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use tokio::sync::OnceCell;
 use tracing::{debug, warn};
 
 use crate::sequencer_block::{get_namespace, SequencerBlock};
@@ -12,18 +12,11 @@ use crate::types::Base64String;
 static DEFAULT_PFD_FEE: i64 = 2_000;
 static DEFAULT_PFD_GAS_LIMIT: u64 = 90_000;
 
-lazy_static! {
-    #[derive(Hash, Eq, PartialEq, Debug)]
-    static ref DEFAULT_NAMESPACE: String = get_namespace(b"sequencer");
-}
+static DEFAULT_NAMESPACE: OnceCell<String> = OnceCell::const_new();
 
-// const DEFAULT_NAMESPACE: String = Sha256::new()
-//     .update(
-//         &Sha256::new()
-//             .update(b"sequencer")
-//             .finalize(),
-//     )
-//     .finalize();
+pub async fn get_default_namespace() -> String {
+    DEFAULT_NAMESPACE.get_or_init(|| async { get_namespace(b"sequencer") }).await.to_string()
+}
 
 #[derive(Deserialize, Debug)]
 pub struct CheckBlockAvailabilityResponse(pub NamespacedSharesResponse);
@@ -155,11 +148,12 @@ impl DataAvailabilityClient for CelestiaClient {
             rollup_namespaces: block_height_and_namespace,
         };
 
+        let default_namespace = DEFAULT_NAMESPACE.get().unwrap();
         let bytes = sequencer_namespace_data.to_bytes()?;
         let resp = self
-            .submit_namespaced_data(&DEFAULT_NAMESPACE, &bytes)
+            .submit_namespaced_data(default_namespace, &bytes)
             .await?;
-        namespace_to_block_num.insert(DEFAULT_NAMESPACE.clone(), resp.0.height);
+        namespace_to_block_num.insert(default_namespace.clone(), resp.0.height);
 
         Ok(SubmitBlockResponse {
             namespace_to_block_num,
@@ -170,12 +164,15 @@ impl DataAvailabilityClient for CelestiaClient {
         &self,
         height: u64,
     ) -> Result<CheckBlockAvailabilityResponse, Error> {
-        let resp = self.0.namespaced_shares(&DEFAULT_NAMESPACE, height).await?;
+        let default_namespace = DEFAULT_NAMESPACE.get().unwrap();
+        println!("{}", default_namespace);
+        let resp = self.0.namespaced_shares(default_namespace, height).await?;
         Ok(CheckBlockAvailabilityResponse(resp))
     }
 
     async fn get_blocks(&self, height: u64) -> Result<Vec<SequencerBlock>, Error> {
-        let namespaced_data_response = self.0.namespaced_data(&DEFAULT_NAMESPACE, height).await?;
+        let default_namespace = DEFAULT_NAMESPACE.get().unwrap();
+        let namespaced_data_response = self.0.namespaced_data(default_namespace, height).await?;
 
         // retrieve all sequencer blocks stored at this height
         let sequencer_namespace_datas: Vec<SequencerNamespaceData> = namespaced_data_response
@@ -241,12 +238,14 @@ impl DataAvailabilityClient for CelestiaClient {
 mod tests {
     use std::collections::HashMap;
 
-    use super::{CelestiaClient, DataAvailabilityClient, SequencerBlock, DEFAULT_NAMESPACE};
+    use super::{CelestiaClient, DataAvailabilityClient, SequencerBlock, get_default_namespace};
     use crate::sequencer_block::get_namespace;
     use crate::types::Base64String;
 
     #[tokio::test]
     async fn test_celestia_client() {
+        let default_namespace = get_default_namespace().await;
+
         // unfortunately, this needs to be all one test for now, since
         // submitting multiple blocks to celestia concurrently returns
         // "incorrect account sequence" errors.
@@ -272,7 +271,7 @@ mod tests {
         #[allow(clippy::unnecessary_to_owned)]
         let height = submit_block_resp
             .namespace_to_block_num
-            .get(&DEFAULT_NAMESPACE.to_string())
+            .get(&default_namespace)
             .unwrap()
             .unwrap();
 

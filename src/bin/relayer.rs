@@ -1,12 +1,11 @@
 use structopt::StructOpt;
-use tokio::time::sleep;
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
 use std::{str::FromStr, time};
 
 use sequencer_relayer::{
-    da::{CelestiaClient, DataAvailabilityClient},
+    da::{get_default_namespace, CelestiaClient, DataAvailabilityClient},
     sequencer::SequencerClient,
     sequencer_block::SequencerBlock,
 };
@@ -49,10 +48,13 @@ async fn main() {
     let da_client = CelestiaClient::new(options.celestia_endpoint)
         .expect("failed to create data availability client");
 
+    get_default_namespace().await;
     let sleep_duration = time::Duration::from_millis(options.block_time);
+    let mut interval = tokio::time::interval(sleep_duration);
     let mut highest_block_number = 0u64;
 
     loop {
+        interval.tick().await;
         match sequencer_client.get_latest_block().await {
             Ok(resp) => {
                 let maybe_height: Result<u64, <u64 as FromStr>::Err> =
@@ -63,13 +65,11 @@ async fn main() {
                         "got invalid block height {} from sequencer",
                         resp.block.header.height,
                     );
-                    sleep(sleep_duration).await;
                     continue;
                 }
 
                 let height = maybe_height.unwrap();
                 if height <= highest_block_number {
-                    sleep(sleep_duration).await;
                     continue;
                 }
 
@@ -79,7 +79,6 @@ async fn main() {
                     Ok(block) => block,
                     Err(e) => {
                         warn!(error = ?e, "failed to convert block to DA block");
-                        sleep(sleep_duration).await;
                         continue;
                     }
                 };
@@ -96,7 +95,5 @@ async fn main() {
             }
             Err(e) => warn!(error = ?e, "failed to get latest block from sequencer"),
         }
-
-        sleep(sleep_duration).await;
     }
 }

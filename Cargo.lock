@@ -1013,7 +1013,6 @@ dependencies = [
  "async-trait",
  "base64",
  "hex",
- "lazy_static",
  "protobuf",
  "protobuf-codegen-pure",
  "reqwest",
