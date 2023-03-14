@@ -17,6 +17,14 @@ lazy_static! {
     static ref DEFAULT_NAMESPACE: String = get_namespace(b"sequencer");
 }
 
+// const DEFAULT_NAMESPACE: String = Sha256::new()
+//     .update(
+//         &Sha256::new()
+//             .update(b"sequencer")
+//             .finalize(),
+//     )
+//     .finalize();
+
 #[derive(Deserialize, Debug)]
 pub struct CheckBlockAvailabilityResponse(pub NamespacedSharesResponse);
 

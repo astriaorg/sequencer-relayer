@@ -1,8 +1,9 @@
 use structopt::StructOpt;
+use tokio::time::sleep;
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
-use std::{str::FromStr, thread, time};
+use std::{str::FromStr, time};
 
 use sequencer_relayer::{
     da::{CelestiaClient, DataAvailabilityClient},
@@ -58,16 +59,17 @@ async fn main() {
                     resp.block.header.height.parse();
                 if let Err(e) = maybe_height {
                     warn!(
-                        "got invalid block height {} from sequencer: {}",
-                        resp.block.header.height, e
+                        error = ?e,
+                        "got invalid block height {} from sequencer",
+                        resp.block.header.height,
                     );
-                    thread::sleep(sleep_duration);
+                    sleep(sleep_duration).await;
                     continue;
                 }
 
                 let height = maybe_height.unwrap();
                 if height <= highest_block_number {
-                    thread::sleep(sleep_duration);
+                    sleep(sleep_duration).await;
                     continue;
                 }
 
@@ -76,8 +78,8 @@ async fn main() {
                 let sequencer_block = match SequencerBlock::from_cosmos_block(resp.block) {
                     Ok(block) => block,
                     Err(e) => {
-                        warn!("failed to convert block to DA block: {:?}", e);
-                        thread::sleep(sleep_duration);
+                        warn!(error = ?e, "failed to convert block to DA block");
+                        sleep(sleep_duration).await;
                         continue;
                     }
                 };
@@ -89,12 +91,12 @@ async fn main() {
                         "submitted block {} to DA layer: tx count={}",
                         height, &tx_count
                     ),
-                    Err(e) => warn!("failed to submit block to DA layer: {:?}", e),
+                    Err(e) => warn!(error = ?e, "failed to submit block to DA layer"),
                 }
             }
-            Err(e) => warn!("failed to get latest block from sequencer: {:?}", e),
+            Err(e) => warn!(error = ?e, "failed to get latest block from sequencer"),
         }
 
-        thread::sleep(sleep_duration);
+        sleep(sleep_duration).await;
     }
 }
