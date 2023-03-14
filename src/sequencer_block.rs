@@ -1,14 +1,14 @@
 use anyhow::{anyhow, Error};
 use base64::{engine::general_purpose, Engine as _};
 use hex;
-use protobuf::{Message, ProtobufError};
+use prost::{DecodeError, Message};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use tracing::{debug, info, warn};
 
-use crate::proto::msg::SequencerMsg;
-use crate::proto::tx::{TxBody, TxRaw};
+use crate::proto::SequencerMsg;
+use crate::proto::{TxBody, TxRaw};
 use crate::types::{Base64String, Block};
 
 static SEQUENCER_TYPE_URL: &str = "/SequencerMsg";
@@ -77,8 +77,8 @@ impl SequencerBlock {
 }
 
 fn parse_cosmos_tx(tx: &Base64String) -> Result<TxBody, Error> {
-    let tx_raw = TxRaw::parse_from_bytes(&tx.0)?;
-    let tx_body = TxBody::parse_from_bytes(&tx_raw.body_bytes)?;
+    let tx_raw = TxRaw::decode(tx.0.as_slice())?;
+    let tx_body = TxBody::decode(tx_raw.body_bytes.as_slice())?;
     Ok(tx_body)
 }
 
@@ -95,8 +95,8 @@ fn cosmos_tx_body_to_sequencer_msgs(tx_body: TxBody) -> Result<Vec<SequencerMsg>
                 true
             }
         })
-        .map(|msg| SequencerMsg::parse_from_bytes(&msg.value))
-        .collect::<Result<Vec<SequencerMsg>, ProtobufError>>()
+        .map(|msg| SequencerMsg::decode(msg.value.as_slice()))
+        .collect::<Result<Vec<SequencerMsg>, DecodeError>>()
         .map_err(|e| anyhow!(e))
 }
 

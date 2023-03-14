@@ -15,7 +15,10 @@ static DEFAULT_PFD_GAS_LIMIT: u64 = 90_000;
 static DEFAULT_NAMESPACE: OnceCell<String> = OnceCell::const_new();
 
 pub async fn get_default_namespace() -> String {
-    DEFAULT_NAMESPACE.get_or_init(|| async { get_namespace(b"sequencer") }).await.to_string()
+    DEFAULT_NAMESPACE
+        .get_or_init(|| async { get_namespace(b"sequencer") })
+        .await
+        .to_string()
 }
 
 #[derive(Deserialize, Debug)]
@@ -238,7 +241,7 @@ impl DataAvailabilityClient for CelestiaClient {
 mod tests {
     use std::collections::HashMap;
 
-    use super::{CelestiaClient, DataAvailabilityClient, SequencerBlock, get_default_namespace};
+    use super::{get_default_namespace, CelestiaClient, DataAvailabilityClient, SequencerBlock};
     use crate::sequencer_block::get_namespace;
     use crate::types::Base64String;
 

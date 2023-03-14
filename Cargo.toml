@@ -8,7 +8,8 @@ anyhow = "1.0"
 async-trait = "0.1"
 base64 = "0.21"
 hex = "0.4"
-protobuf = { version = "2.28", features = ["with-bytes"] }
+prost = "0.11"
+prost-types = "0.11"
 rs-cnc = { git = "https://github.com/astriaorg/rs-cnc.git" }
 reqwest = { version = "0.11", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -20,4 +21,4 @@ tracing = "0.1"
 tracing-subscriber = "0.2.15"
 
 [build-dependencies]
-protobuf-codegen-pure = "2.28"
+prost-build = "0.11"
