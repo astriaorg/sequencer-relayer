@@ -1,7 +1,7 @@
-use anyhow::Error;
+use anyhow::{anyhow, Error};
 use base64::{engine::general_purpose, Engine as _};
 use hex;
-use protobuf::Message;
+use protobuf::{Message, ProtobufError};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -83,18 +83,21 @@ fn parse_cosmos_tx(tx: &Base64String) -> Result<TxBody, Error> {
 }
 
 fn cosmos_tx_body_to_sequencer_msgs(tx_body: TxBody) -> Result<Vec<SequencerMsg>, Error> {
-    let mut msgs = vec![];
-    for msg in tx_body.messages {
-        debug!("parsing cosmos-sdk message: {:?}", msg);
-        if msg.type_url == SEQUENCER_TYPE_URL {
-            let msg = SequencerMsg::parse_from_bytes(&msg.value)?;
-            msgs.push(msg);
-        } else {
-            // TODO: do we want to write sequencer "primary txs" to the DA layer?
-            warn!("ignoring message with non-sequencer type URL: {:?}", msg);
-        }
-    }
-    Ok(msgs)
+    tx_body
+        .messages
+        .iter()
+        .filter(|msg| {
+            if msg.type_url != SEQUENCER_TYPE_URL {
+                // TODO: do we want to write sequencer "primary txs" to the DA layer?
+                warn!("ignoring message with non-sequencer type URL: {:?}", msg);
+                false
+            } else {
+                true
+            }
+        })
+        .map(|msg| SequencerMsg::parse_from_bytes(&msg.value))
+        .collect::<Result<Vec<SequencerMsg>, ProtobufError>>()
+        .map_err(|e| anyhow!(e))
 }
 
 #[cfg(test)]
