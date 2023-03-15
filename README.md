@@ -49,7 +49,7 @@ metro tendermint show-address
 
 While running Metro and Celestia, start the relayer:
 ```bash
-./target/build/release/relayer 
+./target/build/release/relayer -v <address>
 ```
 
 Then, submit a tx to Metro:
