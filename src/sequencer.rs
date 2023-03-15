@@ -52,8 +52,8 @@ impl SequencerClient {
 mod test {
     use bech32::{self, FromBase32, Variant};
 
-    use crate::types::Base64String;
     use super::SequencerClient;
+    use crate::types::Base64String;
 
     #[test]
     fn test_decode_validator_address() {

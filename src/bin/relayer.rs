@@ -1,3 +1,4 @@
+use bech32::{self, FromBase32, ToBase32, Variant};
 use structopt::StructOpt;
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
@@ -28,6 +29,11 @@ struct Options {
     #[structopt(short, long, default_value = "1000")]
     block_time: u64,
 
+    /// Validator address of sequencer node using this relayer.
+    /// Address can be found with `metro tendermint show-address`.
+    #[structopt(short, long)]
+    validator_address: String,
+
     /// Log level. One of debug, info, warn, or error
     #[structopt(short, long, default_value = "info")]
     log: String,
@@ -47,6 +53,12 @@ async fn main() {
         .expect("failed to create sequencer client");
     let da_client = CelestiaClient::new(options.celestia_endpoint)
         .expect("failed to create data availability client");
+
+    let (hrp, data, variant) =
+        bech32::decode(&options.validator_address).expect("failed to decode validator address");
+    assert_eq!(hrp, "metrovalcons", "address must start with metrovalcons");
+    assert_eq!(variant, Variant::Bech32, "expected bech32 address");
+    let address_bytes = Vec::<u8>::from_base32(&data).unwrap();
 
     get_default_namespace().await;
     let sleep_duration = time::Duration::from_millis(options.block_time);
@@ -75,6 +87,21 @@ async fn main() {
 
                 info!("got block with height {} from sequencer", height);
                 highest_block_number = height;
+
+                if resp.block.header.proposer_address.0 != address_bytes {
+                    info!(
+                        "ignoring block: proposer address {} != {}",
+                        bech32::encode(
+                            "metrovalcons",
+                            resp.block.header.proposer_address.0.to_base32(),
+                            Variant::Bech32
+                        )
+                        .unwrap(),
+                        options.validator_address,
+                    );
+                    continue;
+                }
+
                 let sequencer_block = match SequencerBlock::from_cosmos_block(resp.block) {
                     Ok(block) => block,
                     Err(e) => {
