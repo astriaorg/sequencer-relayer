@@ -42,6 +42,11 @@ cargo test
 
 ## Run
 
+Firstly, find your Tendermint validator address:
+```bash
+metro tendermint show-address
+```
+
 While running Metro and Celestia, start the relayer:
 ```bash
 ./target/build/release/relayer 
