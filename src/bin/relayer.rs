@@ -6,7 +6,7 @@ use tracing_subscriber::EnvFilter;
 use std::{str::FromStr, time};
 
 use sequencer_relayer::{
-    da::{get_default_namespace, CelestiaClient, DataAvailabilityClient},
+    da::{CelestiaClient, DataAvailabilityClient},
     sequencer::SequencerClient,
     sequencer_block::SequencerBlock,
 };
@@ -60,7 +60,6 @@ async fn main() {
     assert_eq!(variant, Variant::Bech32, "expected bech32 address");
     let address_bytes = Vec::<u8>::from_base32(&data).unwrap();
 
-    get_default_namespace().await;
     let sleep_duration = time::Duration::from_millis(options.block_time);
     let mut interval = tokio::time::interval(sleep_duration);
     let mut highest_block_number = 0u64;
