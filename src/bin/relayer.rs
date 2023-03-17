@@ -90,10 +90,10 @@ async fn main() {
                 highest_block_number = height;
 
                 if resp.block.header.proposer_address.0 != address_bytes {
-                    let proposer_address =                        bech32::encode(
+                    let proposer_address = bech32::encode(
                         "metrovalcons",
                         resp.block.header.proposer_address.0.to_base32(),
-                        Variant::Bech32
+                        Variant::Bech32,
                     )
                     .expect("should encode block proposer address");
                     info!(
