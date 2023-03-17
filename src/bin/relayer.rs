@@ -90,15 +90,16 @@ async fn main() {
                 highest_block_number = height;
 
                 if resp.block.header.proposer_address.0 != address_bytes {
+                    let proposer_address =                        bech32::encode(
+                        "metrovalcons",
+                        resp.block.header.proposer_address.0.to_base32(),
+                        Variant::Bech32
+                    )
+                    .expect("should encode block proposer address");
                     info!(
-                        "ignoring block: proposer address {} != {}",
-                        bech32::encode(
-                            "metrovalcons",
-                            resp.block.header.proposer_address.0.to_base32(),
-                            Variant::Bech32
-                        )
-                        .expect("should encode block proposer address"),
-                        args.validator_address,
+                        %proposer_address,
+                        validator_address = %args.validator_address,
+                        "ignoring block: proposer address is not ours",
                     );
                     continue;
                 }
