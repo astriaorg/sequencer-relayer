@@ -56,8 +56,8 @@ async fn main() {
     let da_client = CelestiaClient::new(args.celestia_endpoint)
         .expect("failed to create data availability client");
 
-    let (hrp, data, variant) =
-        bech32::decode(&args.validator_address).expect("failed to decode validator address");
+    let (hrp, data, variant) = bech32::decode(&args.validator_address)
+        .expect("failed to decode validator address; address must be a valid bech32 string");
     assert_eq!(hrp, "metrovalcons", "address must start with metrovalcons");
     assert_eq!(variant, Variant::Bech32, "expected bech32 address");
     let address_bytes = Vec::<u8>::from_base32(&data).unwrap();
@@ -97,7 +97,7 @@ async fn main() {
                             resp.block.header.proposer_address.0.to_base32(),
                             Variant::Bech32
                         )
-                        .unwrap(),
+                        .expect("should encode block proposer address"),
                         args.validator_address,
                     );
                     continue;
