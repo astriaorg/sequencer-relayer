@@ -5,7 +5,7 @@ use tracing_subscriber::EnvFilter;
 use std::{str::FromStr, time};
 
 use sequencer_relayer::{
-    da::{get_default_namespace, CelestiaClient, DataAvailabilityClient},
+    da::{CelestiaClient, DataAvailabilityClient},
     sequencer::SequencerClient,
     sequencer_block::SequencerBlock,
 };
@@ -48,7 +48,6 @@ async fn main() {
     let da_client = CelestiaClient::new(options.celestia_endpoint)
         .expect("failed to create data availability client");
 
-    get_default_namespace().await;
     let sleep_duration = time::Duration::from_millis(options.block_time);
     let mut interval = tokio::time::interval(sleep_duration);
     let mut highest_block_number = 0u64;

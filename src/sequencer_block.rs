@@ -11,14 +11,42 @@ use crate::proto::SequencerMsg;
 use crate::proto::{TxBody, TxRaw};
 use crate::types::{Base64String, Block};
 
+/// Cosmos SDK message type URL for SequencerMsgs.
 static SEQUENCER_TYPE_URL: &str = "/SequencerMsg";
 
+/// The default namespace blocks are written to.
+/// A block in this namespace contains "pointers" to the rollup txs contained
+/// in that block; ie. a list of tuples of (DA block height, namespace).
+pub static DEFAULT_NAMESPACE: Namespace = Namespace(*b"astriasq");
+
+#[derive(Clone, Deserialize, Serialize, Debug, Hash, PartialEq, Eq)]
+pub struct Namespace([u8; 8]);
+
+impl std::fmt::Display for Namespace {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // FIXME: `hex::encode` does an extra allocation which could be removed
+        f.write_str(&hex::encode(self.0))
+    }
+}
+
+impl Namespace {
+    pub fn from_string(s: &str) -> Result<Self, Error> {
+        let bytes = hex::decode(s)?;
+        if bytes.len() != 8 {
+            return Err(anyhow!("namespace must be 8 bytes"));
+        }
+        let mut namespace = [0u8; 8];
+        namespace.copy_from_slice(&bytes);
+        Ok(Namespace(namespace))
+    }
+}
+
 // get_namespace returns an 8-byte namespace given a byte slice.
-pub(crate) fn get_namespace(bytes: &[u8]) -> String {
+pub(crate) fn get_namespace(bytes: &[u8]) -> Namespace {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     let result = hasher.finalize();
-    hex::encode(&result[0..8])
+    Namespace(result[0..8].to_owned().try_into().unwrap())
 }
 
 /// SequencerBlock represents a sequencer layer block to be submitted to
@@ -31,7 +59,7 @@ pub struct SequencerBlock {
     pub block_hash: Base64String,
     pub sequencer_txs: Vec<Base64String>, // TODO: do we need this?
     /// namespace -> rollup txs
-    pub rollup_txs: HashMap<String, Vec<Base64String>>,
+    pub rollup_txs: HashMap<Namespace, Vec<Base64String>>,
 }
 
 impl SequencerBlock {
