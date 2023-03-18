@@ -235,8 +235,8 @@ mod tests {
     use std::collections::HashMap;
 
     use super::{CelestiaClient, DataAvailabilityClient, SequencerBlock, DEFAULT_NAMESPACE};
+    use crate::base64_string::Base64String;
     use crate::sequencer_block::get_namespace;
-    use crate::types::Base64String;
 
     #[tokio::test]
     async fn test_celestia_client() {

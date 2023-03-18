@@ -163,8 +163,6 @@ mod test {
         let cosmos_endpoint = "http://localhost:1317".to_string();
         let client = SequencerClient::new(cosmos_endpoint).unwrap();
         let resp = client.get_latest_block().await.unwrap();
-        println!("LatestBlockResponse: {:?}", resp);
-
         let tm_header = header_to_tendermint_header(&resp.block.header).unwrap();
         let tm_header_hash = tm_header.hash();
         assert_eq!(tm_header_hash.as_bytes(), &resp.block_id.hash.0);
