@@ -66,6 +66,10 @@ impl SequencerBlock {
     /// from_cosmos_block converts a cosmos-sdk block into a SequencerBlock.
     /// it parses the block for SequencerMsgs and namespaces them accordingly.
     pub fn from_cosmos_block(b: Block) -> Result<Self, Error> {
+        if b.header.data_hash.is_none() {
+            return Err(anyhow!("block has no data hash"));
+        }
+
         // we unwrap generic txs into rollup-specific txs here,
         // and namespace them correspondingly
         let mut sequencer_txs = vec![];
@@ -97,7 +101,7 @@ impl SequencerBlock {
         }
 
         Ok(Self {
-            block_hash: b.header.data_hash, // TODO: is this the right hash?
+            block_hash: b.header.data_hash.unwrap(), // TODO: is this the right hash?
             sequencer_txs,
             rollup_txs,
         })

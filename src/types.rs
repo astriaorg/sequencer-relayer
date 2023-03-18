@@ -1,9 +1,21 @@
+use anyhow::Error;
 use base64::{engine::general_purpose, Engine as _};
 use serde::{
     de::{self, Visitor},
     Deserialize, Deserializer, Serialize,
 };
+use std::convert::TryFrom;
 use std::fmt;
+use tendermint::{
+    account::Id as AccountId,
+    block::{
+        header::Version as TmVersion, parts::Header as TmPartSetHeader, Header as TmHeader,
+        Height as TmHeight, Id as TmBlockId,
+    },
+    chain::Id as TmChainId,
+    hash::{AppHash, Hash as TmHash},
+    Time,
+};
 
 /// cosmos-sdk RPC types.
 /// see https://v1.cosmos.network/rpc/v0.41.4
@@ -100,7 +112,13 @@ pub struct BlockResponse {
 #[derive(Deserialize, Debug)]
 pub struct BlockId {
     pub hash: Base64String,
-    // TODO: part_set_header
+    pub part_set_header: Parts,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct Parts {
+    pub total: u32,
+    pub hash: Base64String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -129,23 +147,101 @@ pub struct CommitSig {
 
 #[derive(Deserialize, Debug)]
 pub struct Header {
-    // TODO: version
+    pub version: Version,
     pub chain_id: String,
     pub height: String,
     pub time: String,
-    // TODO: last_block_id
-    pub last_commit_hash: Base64String,
-    pub data_hash: Base64String,
+    pub last_block_id: Option<BlockId>,
+    pub last_commit_hash: Option<Base64String>,
+    pub data_hash: Option<Base64String>,
     pub validators_hash: Base64String,
     pub next_validators_hash: Base64String,
     pub consensus_hash: Base64String,
     pub app_hash: Base64String,
-    pub last_results_hash: Base64String,
-    pub evidence_hash: Base64String,
+    pub last_results_hash: Option<Base64String>,
+    pub evidence_hash: Option<Base64String>,
     pub proposer_address: Base64String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct Version {
+    pub block: String,
+    pub app: String,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct Data {
     pub txs: Vec<Base64String>,
+}
+
+#[allow(dead_code)]
+fn header_to_tendermint_header(header: &Header) -> Result<TmHeader, Error> {
+    let last_block_id = match &header.last_block_id {
+        Some(last_block_id) => Some(TmBlockId {
+            hash: TmHash::try_from(last_block_id.hash.0.clone())?,
+            part_set_header: TmPartSetHeader::new(
+                last_block_id.part_set_header.total,
+                TmHash::try_from(last_block_id.part_set_header.hash.0.clone())?,
+            )?,
+        }),
+        None => None,
+    };
+
+    let last_commit_hash = match &header.last_commit_hash {
+        Some(last_commit_hash) => Some(TmHash::try_from(last_commit_hash.0.clone())?),
+        None => None,
+    };
+
+    let data_hash = match &header.data_hash {
+        Some(data_hash) => Some(TmHash::try_from(data_hash.0.clone())?),
+        None => None,
+    };
+
+    let last_results_hash = match &header.last_results_hash {
+        Some(last_results_hash) => Some(TmHash::try_from(last_results_hash.0.clone())?),
+        None => None,
+    };
+
+    let evidence_hash = match &header.evidence_hash {
+        Some(evidence_hash) => Some(TmHash::try_from(evidence_hash.0.clone())?),
+        None => None,
+    };
+
+    Ok(TmHeader {
+        version: TmVersion {
+            block: header.version.block.parse::<u64>()?,
+            app: header.version.app.parse::<u64>()?,
+        },
+        chain_id: TmChainId::try_from(header.chain_id.clone())?,
+        height: TmHeight::try_from(header.height.parse::<u64>()?)?,
+        time: Time::parse_from_rfc3339(&header.time)?,
+        last_block_id,
+        last_commit_hash,
+        data_hash,
+        validators_hash: TmHash::try_from(header.validators_hash.0.clone())?,
+        next_validators_hash: TmHash::try_from(header.next_validators_hash.0.clone())?,
+        consensus_hash: TmHash::try_from(header.consensus_hash.0.clone())?,
+        app_hash: AppHash::try_from(header.app_hash.0.clone())?,
+        last_results_hash,
+        evidence_hash,
+        proposer_address: AccountId::try_from(header.proposer_address.0.clone())?,
+    })
+}
+
+#[cfg(test)]
+mod test {
+    use super::header_to_tendermint_header;
+    use crate::sequencer::SequencerClient;
+
+    #[tokio::test]
+    async fn test_header_to_tendermint_header() {
+        let cosmos_endpoint = "http://localhost:1317".to_string();
+        let client = SequencerClient::new(cosmos_endpoint).unwrap();
+        let resp = client.get_latest_block().await.unwrap();
+        println!("LatestBlockResponse: {:?}", resp);
+
+        let tm_header = header_to_tendermint_header(&resp.block.header).unwrap();
+        let tm_header_hash = tm_header.hash();
+        assert_eq!(tm_header_hash.as_bytes(), &resp.block_id.hash.0);
+    }
 }
