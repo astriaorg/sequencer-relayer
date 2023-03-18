@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::{debug, warn};
 
+use crate::base64_string::Base64String;
 use crate::sequencer_block::{Namespace, SequencerBlock, DEFAULT_NAMESPACE};
-use crate::types::Base64String;
 
 static DEFAULT_PFD_FEE: i64 = 2_000;
 static DEFAULT_PFD_GAS_LIMIT: u64 = 90_000;

@@ -1,11 +1,6 @@
 use anyhow::Error;
-use base64::{engine::general_purpose, Engine as _};
-use serde::{
-    de::{self, Visitor},
-    Deserialize, Deserializer, Serialize,
-};
+use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
-use std::fmt;
 use tendermint::{
     account::Id as AccountId,
     block::{
@@ -17,91 +12,13 @@ use tendermint::{
     Time,
 };
 
-/// cosmos-sdk RPC types.
+use crate::base64_string::Base64String;
+
+/// cosmos-sdk (Tendermint) RPC types.
 /// see https://v1.cosmos.network/rpc/v0.41.4
 
 #[derive(Serialize, Debug)]
 pub struct EmptyRequest {}
-
-#[derive(Clone, PartialEq, Eq, Hash)]
-pub struct Base64String(pub Vec<u8>);
-
-impl Base64String {
-    pub fn from_string(s: String) -> Result<Base64String, base64::DecodeError> {
-        general_purpose::STANDARD.decode(s).map(Base64String)
-    }
-}
-
-impl std::fmt::Display for Base64String {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", general_purpose::STANDARD.encode(&self.0))
-    }
-}
-
-impl fmt::Debug for Base64String {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&general_purpose::STANDARD.encode(&self.0))
-    }
-}
-
-impl Serialize for Base64String {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str(&general_purpose::STANDARD.encode(&self.0))
-    }
-}
-
-impl<'de> Deserialize<'de> for Base64String {
-    fn deserialize<D>(deserializer: D) -> Result<Base64String, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        deserializer.deserialize_string(Base64StringVisitor)
-    }
-}
-
-struct Base64StringVisitor;
-
-impl Base64StringVisitor {
-    fn decode_string<E>(self, value: &str) -> Result<Base64String, E>
-    where
-        E: de::Error,
-    {
-        general_purpose::STANDARD
-            .decode(value)
-            .map(Base64String)
-            .map_err(|e| {
-                E::custom(format!(
-                    "failed to decode string {} from base64: {:?}",
-                    value, e
-                ))
-            })
-    }
-}
-
-impl<'de> Visitor<'de> for Base64StringVisitor {
-    type Value = Base64String;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str("a base64-encoded string")
-    }
-
-    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        self.decode_string(value)
-    }
-
-    fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        self.decode_string(&value)
-    }
-}
 
 #[derive(Deserialize, Debug)]
 pub struct BlockResponse {
@@ -174,38 +91,46 @@ pub struct Data {
     pub txs: Vec<Base64String>,
 }
 
+/// header_to_tendermint_header converts a Tendermint RPC header to a tendermint-rs header.
 #[allow(dead_code)]
 fn header_to_tendermint_header(header: &Header) -> Result<TmHeader, Error> {
-    let last_block_id = match &header.last_block_id {
-        Some(last_block_id) => Some(TmBlockId {
-            hash: TmHash::try_from(last_block_id.hash.0.clone())?,
-            part_set_header: TmPartSetHeader::new(
-                last_block_id.part_set_header.total,
-                TmHash::try_from(last_block_id.part_set_header.hash.0.clone())?,
-            )?,
-        }),
-        None => None,
-    };
+    let last_block_id = header
+        .last_block_id
+        .as_ref()
+        .map(|id| {
+            Ok(TmBlockId {
+                hash: TmHash::try_from(id.hash.0.clone())?,
+                part_set_header: TmPartSetHeader::new(
+                    id.part_set_header.total,
+                    TmHash::try_from(id.part_set_header.hash.0.clone())?,
+                )?,
+            })
+        })
+        .map_or(Ok(None), |r: Result<TmBlockId, Error>| r.map(Some))?;
 
-    let last_commit_hash = match &header.last_commit_hash {
-        Some(last_commit_hash) => Some(TmHash::try_from(last_commit_hash.0.clone())?),
-        None => None,
-    };
+    let last_commit_hash = header
+        .last_commit_hash
+        .as_ref()
+        .map(|h| TmHash::try_from(h.0.clone()))
+        .map_or(Ok(None), |r| r.map(Some))?;
 
-    let data_hash = match &header.data_hash {
-        Some(data_hash) => Some(TmHash::try_from(data_hash.0.clone())?),
-        None => None,
-    };
+    let data_hash = header
+        .data_hash
+        .as_ref()
+        .map(|h| TmHash::try_from(h.0.clone()))
+        .map_or(Ok(None), |r| r.map(Some))?;
 
-    let last_results_hash = match &header.last_results_hash {
-        Some(last_results_hash) => Some(TmHash::try_from(last_results_hash.0.clone())?),
-        None => None,
-    };
+    let last_results_hash = header
+        .last_results_hash
+        .as_ref()
+        .map(|h| TmHash::try_from(h.0.clone()))
+        .map_or(Ok(None), |r| r.map(Some))?;
 
-    let evidence_hash = match &header.evidence_hash {
-        Some(evidence_hash) => Some(TmHash::try_from(evidence_hash.0.clone())?),
-        None => None,
-    };
+    let evidence_hash = header
+        .evidence_hash
+        .as_ref()
+        .map(|h| TmHash::try_from(h.0.clone()))
+        .map_or(Ok(None), |r| r.map(Some))?;
 
     Ok(TmHeader {
         version: TmVersion {

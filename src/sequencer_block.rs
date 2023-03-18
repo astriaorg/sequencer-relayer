@@ -7,9 +7,10 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use tracing::{debug, info, warn};
 
+use crate::base64_string::Base64String;
 use crate::proto::SequencerMsg;
 use crate::proto::{TxBody, TxRaw};
-use crate::types::{Base64String, Block};
+use crate::types::Block;
 
 /// Cosmos SDK message type URL for SequencerMsgs.
 static SEQUENCER_TYPE_URL: &str = "/SequencerMsg";
@@ -135,7 +136,7 @@ fn cosmos_tx_body_to_sequencer_msgs(tx_body: TxBody) -> Result<Vec<SequencerMsg>
 #[cfg(test)]
 mod test {
     use super::{cosmos_tx_body_to_sequencer_msgs, parse_cosmos_tx, SEQUENCER_TYPE_URL};
-    use crate::types::Base64String;
+    use crate::base64_string::Base64String;
 
     #[test]
     fn test_parse_primary_tx() {
