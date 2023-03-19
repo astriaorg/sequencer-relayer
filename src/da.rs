@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use tracing::{debug, warn};
 
 use crate::base64_string::Base64String;
-use crate::sequencer_block::{Namespace, SequencerBlock, DEFAULT_NAMESPACE};
+use crate::sequencer_block::{IndexedTransaction, Namespace, SequencerBlock, DEFAULT_NAMESPACE};
 
 static DEFAULT_PFD_FEE: i64 = 2_000;
 static DEFAULT_PFD_GAS_LIMIT: u64 = 90_000;
@@ -69,7 +69,7 @@ struct SubmitDataResponse(pub PayForDataResponse);
 #[derive(Serialize, Deserialize, Debug)]
 struct SequencerNamespaceData {
     block_hash: Base64String,
-    sequencer_txs: Vec<Base64String>,
+    sequencer_txs: Vec<IndexedTransaction>,
     /// vector of (block height, namespace) tuples
     rollup_namespaces: Vec<(u64, String)>,
 }
@@ -92,7 +92,7 @@ impl SequencerNamespaceData {
 #[derive(Serialize, Deserialize, Debug)]
 struct RollupNamespaceData {
     block_hash: Base64String,
-    rollup_txs: Vec<Base64String>,
+    rollup_txs: Vec<IndexedTransaction>,
 }
 
 impl RollupNamespaceData {
@@ -219,6 +219,7 @@ impl DataAvailabilityClient for CelestiaClient {
                 }
             }
 
+            // TODO: where to validate that the indices are 0..n with no gaps?
             blocks.push(SequencerBlock {
                 block_hash: sequencer_namespace_data.block_hash.clone(),
                 sequencer_txs: sequencer_namespace_data.sequencer_txs.clone(),
@@ -236,7 +237,7 @@ mod tests {
 
     use super::{CelestiaClient, DataAvailabilityClient, SequencerBlock, DEFAULT_NAMESPACE};
     use crate::base64_string::Base64String;
-    use crate::sequencer_block::get_namespace;
+    use crate::sequencer_block::{get_namespace, IndexedTransaction};
 
     #[tokio::test]
     async fn test_celestia_client() {
@@ -254,12 +255,19 @@ mod tests {
         let block_hash = Base64String(vec![99; 32]);
         let mut block = SequencerBlock {
             block_hash: block_hash.clone(),
-            sequencer_txs: vec![tx.clone()],
+            sequencer_txs: vec![IndexedTransaction {
+                index: 0,
+                transaction: tx.clone(),
+            }],
             rollup_txs: HashMap::new(),
         };
-        block
-            .rollup_txs
-            .insert(secondary_namespace.clone(), vec![secondary_tx.clone()]);
+        block.rollup_txs.insert(
+            secondary_namespace.clone(),
+            vec![IndexedTransaction {
+                index: 1,
+                transaction: secondary_tx.clone(),
+            }],
+        );
 
         let submit_block_resp = client.submit_block(block).await.unwrap();
         #[allow(clippy::unnecessary_to_owned)]
@@ -278,8 +286,13 @@ mod tests {
         assert_eq!(resp.len(), 1);
         assert_eq!(resp[0].block_hash, block_hash);
         assert_eq!(resp[0].sequencer_txs.len(), 1);
-        assert_eq!(resp[0].sequencer_txs[0], tx);
+        assert_eq!(resp[0].sequencer_txs[0].index, 0);
+        assert_eq!(resp[0].sequencer_txs[0].transaction, tx);
         assert_eq!(resp[0].rollup_txs.len(), 1);
-        assert_eq!(resp[0].rollup_txs[&secondary_namespace][0], secondary_tx);
+        assert_eq!(resp[0].rollup_txs[&secondary_namespace][0].index, 1);
+        assert_eq!(
+            resp[0].rollup_txs[&secondary_namespace][0].transaction,
+            secondary_tx
+        );
     }
 }

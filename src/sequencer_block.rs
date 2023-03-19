@@ -58,9 +58,19 @@ pub(crate) fn get_namespace(bytes: &[u8]) -> Namespace {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SequencerBlock {
     pub block_hash: Base64String,
-    pub sequencer_txs: Vec<Base64String>, // TODO: do we need this?
+    pub sequencer_txs: Vec<IndexedTransaction>, // TODO: do we need this?
     /// namespace -> rollup txs
-    pub rollup_txs: HashMap<Namespace, Vec<Base64String>>,
+    pub rollup_txs: HashMap<Namespace, Vec<IndexedTransaction>>,
+}
+
+/// IndexedTransaction represents a sequencer transaction along with the index
+/// it was originally in in the sequencer block.
+/// This is required so that the block's `data_hash`, which is a merkle root
+/// of the transactions in the block, can be verified.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct IndexedTransaction {
+    pub index: usize,
+    pub transaction: Base64String,
 }
 
 impl SequencerBlock {
@@ -76,7 +86,7 @@ impl SequencerBlock {
         let mut sequencer_txs = vec![];
         let mut rollup_txs = HashMap::new();
 
-        for tx in b.data.txs.iter() {
+        for (index, tx) in b.data.txs.iter().enumerate() {
             debug!(
                 "parsing tx: {:?}",
                 general_purpose::STANDARD.encode(tx.0.clone())
@@ -90,14 +100,20 @@ impl SequencerBlock {
                 let namespace = msg.chain_id;
                 if namespace.is_empty() {
                     // TODO: should we allow this case? seems sus
-                    sequencer_txs.push(Base64String(msg.data));
+                    sequencer_txs.push(IndexedTransaction {
+                        index,
+                        transaction: Base64String(msg.data),
+                    });
                     continue;
                 }
 
                 let txs = rollup_txs
                     .entry(get_namespace(&namespace))
                     .or_insert(vec![]);
-                txs.push(tx.clone());
+                txs.push(IndexedTransaction {
+                    index,
+                    transaction: tx.clone(),
+                });
             }
         }
 
