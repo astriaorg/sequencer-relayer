@@ -209,7 +209,6 @@ impl CelestiaClient {
                 }
             }
 
-            // TODO: where to validate that the indices are 0..n with no gaps?
             blocks.push(SequencerBlock {
                 block_hash: sequencer_namespace_data.block_hash.clone(),
                 header: sequencer_namespace_data.header.clone(),

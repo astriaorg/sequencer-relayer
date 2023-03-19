@@ -123,7 +123,6 @@ impl Header {
     }
 
     /// to_tendermint_header converts a Tendermint RPC header to a tendermint-rs header.
-    #[allow(dead_code)]
     fn to_tendermint_header(&self) -> Result<TmHeader, Error> {
         let last_block_id = self
             .last_block_id
