@@ -6,6 +6,7 @@ use tracing::{debug, warn};
 
 use crate::base64_string::Base64String;
 use crate::sequencer_block::{IndexedTransaction, Namespace, SequencerBlock, DEFAULT_NAMESPACE};
+use crate::types::Header;
 
 static DEFAULT_PFD_FEE: i64 = 2_000;
 static DEFAULT_PFD_GAS_LIMIT: u64 = 90_000;
@@ -28,6 +29,7 @@ struct SubmitDataResponse(pub PayForDataResponse);
 #[derive(Serialize, Deserialize, Debug)]
 struct SequencerNamespaceData {
     block_hash: Base64String,
+    header: Header,
     sequencer_txs: Vec<IndexedTransaction>,
     /// vector of (block height, namespace) tuples
     rollup_namespaces: Vec<(u64, String)>,
@@ -120,6 +122,7 @@ impl CelestiaClient {
         // first, format and submit data to the base sequencer namespace
         let sequencer_namespace_data = SequencerNamespaceData {
             block_hash: block.block_hash.clone(),
+            header: block.header,
             sequencer_txs: block.sequencer_txs,
             rollup_namespaces: block_height_and_namespace,
         };
@@ -195,10 +198,12 @@ impl CelestiaClient {
                     .collect();
 
                 for rollup_data in rollup_datas {
-                    // TODO: is there a chance multiple blocks could be written with the same block hash?
-                    // there shouldn't be; we need to sign this before submitting and verify sig upon reading
+                    // TODO: there a chance multiple blocks could be written with the same block hash, however
+                    // only one will be valid; we need to sign this before submitting and verify sig upon reading
                     if rollup_data.block_hash == sequencer_namespace_data.block_hash {
                         let namespace = Namespace::from_string(&rollup_namespace)?;
+                        // this replaces what was already in the map, this is bad, but ok for now
+                        // since we need to implementation sig verification anyways.
                         rollup_txs_map.insert(namespace, rollup_data.rollup_txs);
                     }
                 }
@@ -207,6 +212,7 @@ impl CelestiaClient {
             // TODO: where to validate that the indices are 0..n with no gaps?
             blocks.push(SequencerBlock {
                 block_hash: sequencer_namespace_data.block_hash.clone(),
+                header: sequencer_namespace_data.header.clone(),
                 sequencer_txs: sequencer_namespace_data.sequencer_txs.clone(),
                 rollup_txs: rollup_txs_map,
             });
@@ -240,6 +246,7 @@ mod tests {
         let block_hash = Base64String(vec![99; 32]);
         let mut block = SequencerBlock {
             block_hash: block_hash.clone(),
+            header: Default::default(),
             sequencer_txs: vec![IndexedTransaction {
                 index: 0,
                 transaction: tx.clone(),
@@ -270,6 +277,7 @@ mod tests {
         let resp = client.get_blocks(height).await.unwrap();
         assert_eq!(resp.len(), 1);
         assert_eq!(resp[0].block_hash, block_hash);
+        assert_eq!(resp[0].header, Default::default());
         assert_eq!(resp[0].sequencer_txs.len(), 1);
         assert_eq!(resp[0].sequencer_txs[0].index, 0);
         assert_eq!(resp[0].sequencer_txs[0].transaction, tx);

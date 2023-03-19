@@ -10,7 +10,7 @@ use tracing::{debug, warn};
 use crate::base64_string::Base64String;
 use crate::proto::SequencerMsg;
 use crate::proto::{TxBody, TxRaw};
-use crate::types::Block;
+use crate::types::{Block, Header};
 
 /// Cosmos SDK message type URL for SequencerMsgs.
 static SEQUENCER_TYPE_URL: &str = "/SequencerMsg";
@@ -61,6 +61,7 @@ pub(crate) fn get_namespace(bytes: &[u8]) -> Namespace {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SequencerBlock {
     pub block_hash: Base64String,
+    pub header: Header,
     pub sequencer_txs: Vec<IndexedTransaction>, // TODO: do we need this?
     /// namespace -> rollup txs
     pub rollup_txs: HashMap<Namespace, Vec<IndexedTransaction>>,
@@ -123,7 +124,8 @@ impl SequencerBlock {
         }
 
         Ok(Self {
-            block_hash: b.header.data_hash.unwrap(), // TODO: is this the right hash?
+            block_hash: Base64String(b.header.hash()?.as_bytes().to_vec()),
+            header: b.header,
             sequencer_txs,
             rollup_txs,
         })
