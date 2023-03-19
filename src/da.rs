@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Error};
-use async_trait::async_trait;
 use rs_cnc::{CelestiaNodeClient, NamespacedSharesResponse, PayForDataResponse};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -18,46 +17,6 @@ pub struct CheckBlockAvailabilityResponse(pub NamespacedSharesResponse);
 /// It contains a map of namespaces to the block number that it was written to.
 pub struct SubmitBlockResponse {
     pub namespace_to_block_num: HashMap<String, Option<u64>>,
-}
-
-/// DataAvailabilityClient is able to submit and query blocks from the DA layer.
-#[async_trait]
-pub trait DataAvailabilityClient {
-    /// submit_block submits a block to the DA layer.
-    /// it writes each transaction to a specific namespace given its chain ID.
-    async fn submit_block(&self, block: SequencerBlock) -> Result<SubmitBlockResponse, Error>;
-    async fn check_block_availability(
-        &self,
-        height: u64,
-    ) -> Result<CheckBlockAvailabilityResponse, Error>;
-    async fn get_blocks(&self, height: u64) -> Result<Vec<SequencerBlock>, Error>;
-}
-
-/// CelestiaClient is a DataAvailabilityClient that submits blocks to a Celestia Node.
-pub struct CelestiaClient(CelestiaNodeClient);
-
-impl CelestiaClient {
-    pub fn new(endpoint: String) -> Result<Self, Error> {
-        let cnc = CelestiaNodeClient::new(endpoint)?;
-        Ok(CelestiaClient(cnc))
-    }
-
-    async fn submit_namespaced_data(
-        &self,
-        namespace: &str,
-        data: &[u8],
-    ) -> Result<SubmitDataResponse, Error> {
-        let pay_for_data_response = self
-            .0
-            .submit_pay_for_data(
-                namespace,
-                &data.to_vec().into(),
-                DEFAULT_PFD_FEE,
-                DEFAULT_PFD_GAS_LIMIT,
-            )
-            .await?;
-        Ok(SubmitDataResponse(pay_for_data_response))
-    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -109,9 +68,33 @@ impl RollupNamespaceData {
     }
 }
 
-#[async_trait]
-impl DataAvailabilityClient for CelestiaClient {
-    async fn submit_block(&self, block: SequencerBlock) -> Result<SubmitBlockResponse, Error> {
+/// CelestiaClient is a DataAvailabilityClient that submits blocks to a Celestia Node.
+pub struct CelestiaClient(CelestiaNodeClient);
+
+impl CelestiaClient {
+    pub fn new(endpoint: String) -> Result<Self, Error> {
+        let cnc = CelestiaNodeClient::new(endpoint)?;
+        Ok(CelestiaClient(cnc))
+    }
+
+    async fn submit_namespaced_data(
+        &self,
+        namespace: &str,
+        data: &[u8],
+    ) -> Result<SubmitDataResponse, Error> {
+        let pay_for_data_response = self
+            .0
+            .submit_pay_for_data(
+                namespace,
+                &data.to_vec().into(),
+                DEFAULT_PFD_FEE,
+                DEFAULT_PFD_GAS_LIMIT,
+            )
+            .await?;
+        Ok(SubmitDataResponse(pay_for_data_response))
+    }
+
+    pub async fn submit_block(&self, block: SequencerBlock) -> Result<SubmitBlockResponse, Error> {
         let mut namespace_to_block_num: HashMap<String, Option<u64>> = HashMap::new();
         let mut block_height_and_namespace: Vec<(u64, String)> = Vec::new();
 
@@ -152,7 +135,7 @@ impl DataAvailabilityClient for CelestiaClient {
         })
     }
 
-    async fn check_block_availability(
+    pub async fn check_block_availability(
         &self,
         height: u64,
     ) -> Result<CheckBlockAvailabilityResponse, Error> {
@@ -163,7 +146,7 @@ impl DataAvailabilityClient for CelestiaClient {
         Ok(CheckBlockAvailabilityResponse(resp))
     }
 
-    async fn get_blocks(&self, height: u64) -> Result<Vec<SequencerBlock>, Error> {
+    pub async fn get_blocks(&self, height: u64) -> Result<Vec<SequencerBlock>, Error> {
         let namespaced_data_response = self
             .0
             .namespaced_data(&DEFAULT_NAMESPACE.to_string(), height)
@@ -197,7 +180,7 @@ impl DataAvailabilityClient for CelestiaClient {
                     .namespaced_data(&rollup_namespace.to_string(), height)
                     .await?;
 
-                let rollup_txs: Vec<RollupNamespaceData> = namespaced_data_response
+                let rollup_datas: Vec<RollupNamespaceData> = namespaced_data_response
                     .data
                     .unwrap_or_default()
                     .iter()
@@ -211,10 +194,12 @@ impl DataAvailabilityClient for CelestiaClient {
                     })
                     .collect();
 
-                for rollup_tx in rollup_txs {
-                    if rollup_tx.block_hash == sequencer_namespace_data.block_hash {
+                for rollup_data in rollup_datas {
+                    // TODO: is there a chance multiple blocks could be written with the same block hash?
+                    // there shouldn't be; we need to sign this before submitting and verify sig upon reading
+                    if rollup_data.block_hash == sequencer_namespace_data.block_hash {
                         let namespace = Namespace::from_string(&rollup_namespace)?;
-                        rollup_txs_map.insert(namespace, rollup_tx.rollup_txs);
+                        rollup_txs_map.insert(namespace, rollup_data.rollup_txs);
                     }
                 }
             }
@@ -235,7 +220,7 @@ impl DataAvailabilityClient for CelestiaClient {
 mod tests {
     use std::collections::HashMap;
 
-    use super::{CelestiaClient, DataAvailabilityClient, SequencerBlock, DEFAULT_NAMESPACE};
+    use super::{CelestiaClient, SequencerBlock, DEFAULT_NAMESPACE};
     use crate::base64_string::Base64String;
     use crate::sequencer_block::{get_namespace, IndexedTransaction};
 

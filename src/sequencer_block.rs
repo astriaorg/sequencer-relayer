@@ -5,7 +5,7 @@ use prost::{DecodeError, Message};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
 use crate::base64_string::Base64String;
 use crate::proto::SequencerMsg;
@@ -53,8 +53,11 @@ pub(crate) fn get_namespace(bytes: &[u8]) -> Namespace {
 /// SequencerBlock represents a sequencer layer block to be submitted to
 /// the DA layer.
 /// TODO: compression or a better serialization method?
-/// TODO: rename this b/c it's kind of confusing, types::Block is a cosmos-sdk block
-/// which is also a sequencer block in a way.
+/// TODO: rename this b/c it's kind of confusing, types::Block is a cosmos-sdk/tendermint
+/// block which is also a sequencer block in a way.
+///
+/// NOTE: all transactions in this structure are full transaction bytes as received
+/// from tendermint.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SequencerBlock {
     pub block_hash: Base64String,
@@ -95,26 +98,28 @@ impl SequencerBlock {
             let tx_body = parse_cosmos_tx(tx)?;
             let msgs = cosmos_tx_body_to_sequencer_msgs(tx_body)?;
 
-            for msg in msgs {
-                info!("parsed SequencerMsg: {:?}", msg);
-                let namespace = msg.chain_id;
-                if namespace.is_empty() {
-                    // TODO: should we allow this case? seems sus
-                    sequencer_txs.push(IndexedTransaction {
-                        index,
-                        transaction: Base64String(msg.data),
-                    });
-                    continue;
-                }
-
-                let txs = rollup_txs
-                    .entry(get_namespace(&namespace))
-                    .or_insert(vec![]);
+            // NOTE: we currently write the entire cosmos tx to Celestia.
+            // we kind of have to do this, even though the content of a SequencerMsg is
+            // what's relevant, because we need the full tx to reconstruct the data_hash
+            // for verification.
+            // the logic here is a bit weird; if the tx only contains one message that's
+            // destined for a rollup, it's written to the rollup namespace, otherwise
+            // it's written to the base namespace.
+            if msgs.len() == 1 {
+                // TODO: should we allow empty chain IDs?
+                let namespace = get_namespace(&msgs[0].chain_id);
+                let txs = rollup_txs.entry(namespace).or_insert(vec![]);
                 txs.push(IndexedTransaction {
                     index,
                     transaction: tx.clone(),
                 });
+                continue;
             }
+
+            sequencer_txs.push(IndexedTransaction {
+                index,
+                transaction: tx.clone(),
+            })
         }
 
         Ok(Self {

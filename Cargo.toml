@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
-async-trait = "0.1"
 base64 = "0.21"
 bech32 = "0.9"
 hex = "0.4"
