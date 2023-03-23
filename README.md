@@ -43,20 +43,12 @@ cargo test
 
 ## Run
 
-Firstly, find your Tendermint validator address:
-```bash
-metro tendermint show-address
-```
-
-Find your Tendermint validator private key:
-```bash
-cat ~/.metro/config/priv_validator_key.json
-```
-
 While running Metro and Celestia, start the relayer:
 ```bash
-./target/build/release/relayer -v <address>
+./target/build/release/relayer
 ```
+
+Note: the relayer automatically uses the validator private key located at `~/.metro/config/priv_validator_key.json`. You can specify the file with `-v`.
 
 Then, submit a tx to Metro:
 ```bash
