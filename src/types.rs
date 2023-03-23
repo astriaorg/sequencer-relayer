@@ -26,13 +26,13 @@ pub struct BlockResponse {
     pub block: Block,
 }
 
-#[derive(Clone, Deserialize, Debug, PartialEq, Eq, Hash, Serialize)]
+#[derive(Clone, Deserialize, Debug, PartialEq, Eq, Serialize)]
 pub struct BlockId {
     pub hash: Base64String,
     pub part_set_header: Parts,
 }
 
-#[derive(Clone, Deserialize, Debug, PartialEq, Eq, Hash, Serialize)]
+#[derive(Clone, Deserialize, Debug, PartialEq, Eq, Serialize)]
 pub struct Parts {
     pub total: u32,
     pub hash: Base64String,
@@ -62,7 +62,7 @@ pub struct CommitSig {
     pub signature: Base64String,
 }
 
-#[derive(Clone, Deserialize, Debug, Eq, Hash, PartialEq, Serialize)]
+#[derive(Clone, Deserialize, Debug, Eq, PartialEq, Serialize)]
 pub struct Version {
     pub block: String,
     pub app: String,
@@ -73,7 +73,7 @@ pub struct Data {
     pub txs: Vec<Base64String>,
 }
 
-#[derive(Clone, Deserialize, Debug, Hash, Eq, PartialEq, Serialize)]
+#[derive(Clone, Deserialize, Debug, Eq, PartialEq, Serialize)]
 pub struct Header {
     pub version: Version,
     pub chain_id: String,
