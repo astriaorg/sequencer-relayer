@@ -48,6 +48,11 @@ Firstly, find your Tendermint validator address:
 metro tendermint show-address
 ```
 
+Find your Tendermint validator private key:
+```bash
+cat ~/.metro/config/priv_validator_key.json
+```
+
 While running Metro and Celestia, start the relayer:
 ```bash
 ./target/build/release/relayer -v <address>

@@ -73,7 +73,7 @@ pub struct SequencerBlock {
 /// it was originally in in the sequencer block.
 /// This is required so that the block's `data_hash`, which is a merkle root
 /// of the transactions in the block, can be verified.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Hash)]
 pub struct IndexedTransaction {
     pub index: usize,
     pub transaction: Base64String,

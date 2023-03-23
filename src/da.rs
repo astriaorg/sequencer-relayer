@@ -1,6 +1,8 @@
 use anyhow::{anyhow, Error};
+use ed25519_dalek::{ed25519::signature::Signature, Keypair, PublicKey, Signer, Verifier};
 use rs_cnc::{CelestiaNodeClient, NamespacedSharesResponse, PayForDataResponse};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use tracing::{debug, warn};
 
@@ -11,17 +13,11 @@ use crate::types::Header;
 static DEFAULT_PFD_FEE: i64 = 2_000;
 static DEFAULT_PFD_GAS_LIMIT: u64 = 90_000;
 
-#[derive(Deserialize, Debug)]
-pub struct CheckBlockAvailabilityResponse(pub NamespacedSharesResponse);
-
 /// SubmitBlockResponse is the response to a SubmitBlock request.
 /// It contains a map of namespaces to the block number that it was written to.
 pub struct SubmitBlockResponse {
     pub namespace_to_block_num: HashMap<String, Option<u64>>,
 }
-
-#[derive(Deserialize, Debug)]
-struct SubmitDataResponse(pub PayForDataResponse);
 
 /// SequencerNamespaceData represents the data written to the "base"
 /// sequencer namespace. It contains all the other namespaces that were
@@ -36,6 +32,40 @@ struct SequencerNamespaceData {
 }
 
 impl SequencerNamespaceData {
+    fn hash(&self) -> Result<Vec<u8>, Error> {
+        let mut hasher = Sha256::new();
+        hasher.update(self.to_bytes()?);
+        let hash = hasher.finalize();
+        Ok(hash.to_vec())
+    }
+
+    fn to_signed(
+        self: SequencerNamespaceData,
+        keypair: &Keypair,
+    ) -> Result<SignedSequencerNamespaceData, Error> {
+        let hash = self.hash()?;
+
+        let data = SignedSequencerNamespaceData {
+            data: self,
+            signature: Base64String(keypair.sign(&hash).as_bytes().to_vec()),
+        };
+        Ok(data)
+    }
+
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        // TODO: don't use json, use our own serializer (or protobuf for now?)
+        let string = serde_json::to_string(self).map_err(|e| anyhow!(e))?;
+        Ok(string.into_bytes())
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct SignedSequencerNamespaceData {
+    data: SequencerNamespaceData,
+    signature: Base64String,
+}
+
+impl SignedSequencerNamespaceData {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         // TODO: don't use json, use our own serializer (or protobuf for now?)
         let string = serde_json::to_string(self).map_err(|e| anyhow!(e))?;
@@ -57,6 +87,39 @@ struct RollupNamespaceData {
 }
 
 impl RollupNamespaceData {
+    fn hash(&self) -> Result<Vec<u8>, Error> {
+        let mut hasher = Sha256::new();
+        hasher.update(self.to_bytes()?);
+        let hash = hasher.finalize();
+        Ok(hash.to_vec())
+    }
+
+    fn to_signed(
+        self: RollupNamespaceData,
+        keypair: &Keypair,
+    ) -> Result<SignedRollupNamespaceData, Error> {
+        let hash = self.hash()?;
+        let data = SignedRollupNamespaceData {
+            data: self,
+            signature: Base64String(keypair.sign(&hash).as_bytes().to_vec()),
+        };
+        Ok(data)
+    }
+
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        // TODO: don't use json, use our own serializer (or protobuf for now?)
+        let string = serde_json::to_string(self).map_err(|e| anyhow!(e))?;
+        Ok(string.into_bytes())
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct SignedRollupNamespaceData {
+    data: RollupNamespaceData,
+    signature: Base64String,
+}
+
+impl SignedRollupNamespaceData {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         // TODO: don't use json, use our own serializer (or protobuf for now?)
         let string = serde_json::to_string(self).map_err(|e| anyhow!(e))?;
@@ -71,21 +134,27 @@ impl RollupNamespaceData {
 }
 
 /// CelestiaClient is a DataAvailabilityClient that submits blocks to a Celestia Node.
-pub struct CelestiaClient(CelestiaNodeClient);
+pub struct CelestiaClient {
+    client: CelestiaNodeClient,
+    keypair: Keypair,
+}
 
 impl CelestiaClient {
-    pub fn new(endpoint: String) -> Result<Self, Error> {
+    pub fn new(endpoint: String, keypair: Keypair) -> Result<Self, Error> {
         let cnc = CelestiaNodeClient::new(endpoint)?;
-        Ok(CelestiaClient(cnc))
+        Ok(CelestiaClient {
+            client: cnc,
+            keypair,
+        })
     }
 
     async fn submit_namespaced_data(
         &self,
         namespace: &str,
         data: &[u8],
-    ) -> Result<SubmitDataResponse, Error> {
+    ) -> Result<PayForDataResponse, Error> {
         let pay_for_data_response = self
-            .0
+            .client
             .submit_pay_for_data(
                 namespace,
                 &data.to_vec().into(),
@@ -93,7 +162,7 @@ impl CelestiaClient {
                 DEFAULT_PFD_GAS_LIMIT,
             )
             .await?;
-        Ok(SubmitDataResponse(pay_for_data_response))
+        Ok(pay_for_data_response)
     }
 
     pub async fn submit_block(&self, block: SequencerBlock) -> Result<SubmitBlockResponse, Error> {
@@ -110,12 +179,12 @@ impl CelestiaClient {
                 block_hash: block.block_hash.clone(),
                 rollup_txs: txs,
             };
-            let rollup_data_bytes = rollup_namespace_data.to_bytes()?;
+            let rollup_data_bytes = rollup_namespace_data.to_signed(&self.keypair)?.to_bytes()?;
             let resp = self
                 .submit_namespaced_data(&namespace.to_string(), &rollup_data_bytes)
                 .await?;
-            namespace_to_block_num.insert(namespace.to_string(), resp.0.height);
-            block_height_and_namespace.push((resp.0.height.unwrap(), namespace.to_string()))
+            namespace_to_block_num.insert(namespace.to_string(), resp.height);
+            block_height_and_namespace.push((resp.height.unwrap(), namespace.to_string()))
             // TODO: no unwrap
         }
 
@@ -127,11 +196,13 @@ impl CelestiaClient {
             rollup_namespaces: block_height_and_namespace,
         };
 
-        let bytes = sequencer_namespace_data.to_bytes()?;
+        let bytes = sequencer_namespace_data
+            .to_signed(&self.keypair)?
+            .to_bytes()?;
         let resp = self
             .submit_namespaced_data(&DEFAULT_NAMESPACE.to_string(), &bytes)
             .await?;
-        namespace_to_block_num.insert(DEFAULT_NAMESPACE.to_string(), resp.0.height);
+        namespace_to_block_num.insert(DEFAULT_NAMESPACE.to_string(), resp.height);
 
         Ok(SubmitBlockResponse {
             namespace_to_block_num,
@@ -141,27 +212,31 @@ impl CelestiaClient {
     pub async fn check_block_availability(
         &self,
         height: u64,
-    ) -> Result<CheckBlockAvailabilityResponse, Error> {
+    ) -> Result<NamespacedSharesResponse, Error> {
         let resp = self
-            .0
+            .client
             .namespaced_shares(&DEFAULT_NAMESPACE.to_string(), height)
             .await?;
-        Ok(CheckBlockAvailabilityResponse(resp))
+        Ok(resp)
     }
 
-    pub async fn get_blocks(&self, height: u64) -> Result<Vec<SequencerBlock>, Error> {
+    pub async fn get_blocks(
+        &self,
+        height: u64,
+        public_key: PublicKey,
+    ) -> Result<Vec<SequencerBlock>, Error> {
         let namespaced_data_response = self
-            .0
+            .client
             .namespaced_data(&DEFAULT_NAMESPACE.to_string(), height)
             .await?;
 
         // retrieve all sequencer blocks stored at this height
-        let sequencer_namespace_datas: Vec<SequencerNamespaceData> = namespaced_data_response
+        let sequencer_namespace_datas: Vec<SignedSequencerNamespaceData> = namespaced_data_response
             .data
             .unwrap_or_default()
             .iter()
             .filter_map(|d| {
-                if let Ok(data) = SequencerNamespaceData::from_bytes(&d.0) {
+                if let Ok(data) = SignedSequencerNamespaceData::from_bytes(&d.0) {
                     Some(data)
                 } else {
                     None
@@ -169,30 +244,57 @@ impl CelestiaClient {
             })
             .collect();
 
+        // find data that was signed by the given public key
+        let sequencer_namespace_datas = sequencer_namespace_datas
+            .into_iter()
+            .filter(|d| {
+                let hash = match d.data.hash() {
+                    Ok(hash) => hash,
+                    Err(_) => return false,
+                };
+
+                match Signature::from_bytes(&d.signature.0) {
+                    Ok(sig) => public_key.verify(&hash, &sig).is_ok(),
+                    Err(_) => false,
+                }
+            })
+            .collect::<Vec<_>>();
+
         let mut blocks = vec![];
 
         // for all the sequencer blocks retrieved, create the corresponding SequencerBlock
         for sequencer_namespace_data in &sequencer_namespace_datas {
-            let rollup_namespaces = sequencer_namespace_data.rollup_namespaces.clone();
+            let rollup_namespaces = sequencer_namespace_data.data.rollup_namespaces.clone();
             let mut rollup_txs_map = HashMap::new();
 
             // for each rollup namespace, retrieve the corresponding rollup block
             for (height, rollup_namespace) in rollup_namespaces {
                 let namespaced_data_response = self
-                    .0
+                    .client
                     .namespaced_data(&rollup_namespace.to_string(), height)
                     .await?;
 
-                let rollup_datas: Vec<RollupNamespaceData> = namespaced_data_response
+                let rollup_datas: Vec<SignedRollupNamespaceData> = namespaced_data_response
                     .data
                     .unwrap_or_default()
                     .iter()
                     .filter_map(|d| {
-                        if let Ok(data) = RollupNamespaceData::from_bytes(&d.0) {
+                        if let Ok(data) = SignedRollupNamespaceData::from_bytes(&d.0) {
                             Some(data)
                         } else {
                             warn!("failed to deserialize rollup namespace data");
                             None
+                        }
+                    })
+                    .filter(|d| {
+                        let hash = match d.data.hash() {
+                            Ok(hash) => hash,
+                            Err(_) => return false,
+                        };
+
+                        match Signature::from_bytes(&d.signature.0) {
+                            Ok(sig) => public_key.verify(&hash, &sig).is_ok(),
+                            Err(_) => false,
                         }
                     })
                     .collect();
@@ -200,19 +302,19 @@ impl CelestiaClient {
                 for rollup_data in rollup_datas {
                     // TODO: there a chance multiple blocks could be written with the same block hash, however
                     // only one will be valid; we need to sign this before submitting and verify sig upon reading
-                    if rollup_data.block_hash == sequencer_namespace_data.block_hash {
+                    if rollup_data.data.block_hash == sequencer_namespace_data.data.block_hash {
                         let namespace = Namespace::from_string(&rollup_namespace)?;
                         // this replaces what was already in the map, this is bad, but ok for now
                         // since we need to implementation sig verification anyways.
-                        rollup_txs_map.insert(namespace, rollup_data.rollup_txs);
+                        rollup_txs_map.insert(namespace, rollup_data.data.rollup_txs);
                     }
                 }
             }
 
             blocks.push(SequencerBlock {
-                block_hash: sequencer_namespace_data.block_hash.clone(),
-                header: sequencer_namespace_data.header.clone(),
-                sequencer_txs: sequencer_namespace_data.sequencer_txs.clone(),
+                block_hash: sequencer_namespace_data.data.block_hash.clone(),
+                header: sequencer_namespace_data.data.header.clone(),
+                sequencer_txs: sequencer_namespace_data.data.sequencer_txs.clone(),
                 rollup_txs: rollup_txs_map,
             });
         }
@@ -223,6 +325,8 @@ impl CelestiaClient {
 
 #[cfg(test)]
 mod tests {
+    use ed25519_dalek::{Keypair, PublicKey};
+    use rand::rngs::OsRng;
     use std::collections::HashMap;
 
     use super::{CelestiaClient, SequencerBlock, DEFAULT_NAMESPACE};
@@ -236,8 +340,11 @@ mod tests {
         // "incorrect account sequence" errors.
 
         // test submit_block
+        let keypair = Keypair::generate(&mut OsRng);
+        let public_key = PublicKey::from_bytes(&keypair.public.to_bytes()).unwrap();
+
         let base_url = "http://localhost:26659".to_string();
-        let client = CelestiaClient::new(base_url).unwrap();
+        let client = CelestiaClient::new(base_url, keypair).unwrap();
         let tx = Base64String(b"noot_was_here".to_vec());
         let secondary_namespace = get_namespace(b"test_namespace");
         let secondary_tx = Base64String(b"noot_was_here_too".to_vec());
@@ -270,10 +377,10 @@ mod tests {
 
         // test check_block_availability
         let resp = client.check_block_availability(height).await.unwrap();
-        assert_eq!(resp.0.height, height);
+        assert_eq!(resp.height, height);
 
         // test get_blocks
-        let resp = client.get_blocks(height).await.unwrap();
+        let resp = client.get_blocks(height, public_key).await.unwrap();
         assert_eq!(resp.len(), 1);
         assert_eq!(resp[0].block_hash, block_hash);
         assert_eq!(resp[0].header, Default::default());
