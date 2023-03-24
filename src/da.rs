@@ -136,19 +136,15 @@ impl SignedRollupNamespaceData {
 /// CelestiaClient is a DataAvailabilityClient that submits blocks to a Celestia Node.
 pub struct CelestiaClient {
     client: CelestiaNodeClient,
-    keypair: Keypair,
 }
 
 impl CelestiaClient {
     /// new creates a new CelestiaClient with the given keypair.
     /// the keypair is used to sign the data that is submitted to Celestia,
     /// specifically within submit_block.
-    pub fn new(endpoint: String, keypair: Keypair) -> Result<Self, Error> {
+    pub fn new(endpoint: String) -> Result<Self, Error> {
         let cnc = CelestiaNodeClient::new(endpoint)?;
-        Ok(CelestiaClient {
-            client: cnc,
-            keypair,
-        })
+        Ok(CelestiaClient { client: cnc })
     }
 
     async fn submit_namespaced_data(
@@ -172,7 +168,11 @@ impl CelestiaClient {
     /// It first writes all the rollup namespace data, then writes the sequencer namespace data.
     /// The sequencer namespace data contains all the rollup namespaces that were written,
     /// along with any transactions that were not for a specific rollup.
-    pub async fn submit_block(&self, block: SequencerBlock) -> Result<SubmitBlockResponse, Error> {
+    pub async fn submit_block(
+        &self,
+        block: SequencerBlock,
+        keypair: &Keypair,
+    ) -> Result<SubmitBlockResponse, Error> {
         let mut namespace_to_block_num: HashMap<String, u64> = HashMap::new();
         let mut block_height_and_namespace: Vec<(u64, String)> = Vec::new();
 
@@ -186,7 +186,7 @@ impl CelestiaClient {
                 block_hash: block.block_hash.clone(),
                 rollup_txs: txs,
             };
-            let rollup_data_bytes = rollup_namespace_data.to_signed(&self.keypair)?.to_bytes()?;
+            let rollup_data_bytes = rollup_namespace_data.to_signed(keypair)?.to_bytes()?;
             let resp = self
                 .submit_namespaced_data(&namespace.to_string(), &rollup_data_bytes)
                 .await?;
@@ -207,9 +207,7 @@ impl CelestiaClient {
             rollup_namespaces: block_height_and_namespace,
         };
 
-        let bytes = sequencer_namespace_data
-            .to_signed(&self.keypair)?
-            .to_bytes()?;
+        let bytes = sequencer_namespace_data.to_signed(keypair)?.to_bytes()?;
         let resp = self
             .submit_namespaced_data(&DEFAULT_NAMESPACE.to_string(), &bytes)
             .await?;
@@ -245,14 +243,14 @@ impl CelestiaClient {
     pub async fn get_blocks(
         &self,
         height: u64,
-        public_key: PublicKey,
+        public_key: &PublicKey,
     ) -> Result<Vec<SequencerBlock>, Error> {
         let namespaced_data_response = self
             .client
             .namespaced_data(&DEFAULT_NAMESPACE.to_string(), height)
             .await?;
 
-        // retrieve all sequencer blocks stored at this height
+        // retrieve all sequencer data stored at this height
         let sequencer_namespace_datas: Vec<SignedSequencerNamespaceData> = namespaced_data_response
             .data
             .unwrap_or_default()
@@ -267,7 +265,8 @@ impl CelestiaClient {
             .collect();
 
         // find data that was signed by the given public key
-        // TODO: there should NOT be multiple datas with the same block hash and signer
+        // TODO: there should NOT be multiple datas with the same block hash and signer;
+        // should we check here, or should the caller check?
         let sequencer_namespace_datas = sequencer_namespace_datas
             .into_iter()
             .filter(|d| {
@@ -297,7 +296,7 @@ impl CelestiaClient {
                         &sequencer_namespace_data.data.block_hash.0,
                         &rollup_namespace,
                         height,
-                        &public_key,
+                        public_key,
                     )
                     .await?;
                 if rollup_txs.is_none() {
@@ -391,7 +390,7 @@ mod tests {
         // test that get_blocks only gets blocked signed with a specific key
         let keypair = Keypair::generate(&mut OsRng);
         let base_url = "http://localhost:26659".to_string();
-        let client = CelestiaClient::new(base_url, keypair).unwrap();
+        let client = CelestiaClient::new(base_url).unwrap();
         let tx = Base64String(b"noot_was_here".to_vec());
 
         let block_hash = Base64String(vec![99; 32]);
@@ -405,7 +404,7 @@ mod tests {
             rollup_txs: HashMap::new(),
         };
 
-        let submit_block_resp = client.submit_block(block).await.unwrap();
+        let submit_block_resp = client.submit_block(block, &keypair).await.unwrap();
         let height = submit_block_resp
             .namespace_to_block_num
             .get(&DEFAULT_NAMESPACE.to_string())
@@ -414,7 +413,7 @@ mod tests {
         // generate new, different key
         let keypair = Keypair::generate(&mut OsRng);
         let public_key = PublicKey::from_bytes(&keypair.public.to_bytes()).unwrap();
-        let resp = client.get_blocks(*height, public_key).await.unwrap();
+        let resp = client.get_blocks(*height, &public_key).await.unwrap();
         assert!(resp.is_empty());
     }
 
@@ -425,7 +424,7 @@ mod tests {
         let public_key = PublicKey::from_bytes(&keypair.public.to_bytes()).unwrap();
 
         let base_url = "http://localhost:26659".to_string();
-        let client = CelestiaClient::new(base_url, keypair).unwrap();
+        let client = CelestiaClient::new(base_url).unwrap();
         let tx = Base64String(b"noot_was_here".to_vec());
         let secondary_namespace = get_namespace(b"test_namespace");
         let secondary_tx = Base64String(b"noot_was_here_too".to_vec());
@@ -448,7 +447,7 @@ mod tests {
             }],
         );
 
-        let submit_block_resp = client.submit_block(block).await.unwrap();
+        let submit_block_resp = client.submit_block(block, &keypair).await.unwrap();
         let height = submit_block_resp
             .namespace_to_block_num
             .get(&DEFAULT_NAMESPACE.to_string())
@@ -459,7 +458,7 @@ mod tests {
         assert_eq!(resp.height, *height);
 
         // test get_blocks
-        let resp = client.get_blocks(*height, public_key).await.unwrap();
+        let resp = client.get_blocks(*height, &public_key).await.unwrap();
         assert_eq!(resp.len(), 1);
         assert_eq!(resp[0].block_hash, block_hash);
         assert_eq!(resp[0].header, Default::default());

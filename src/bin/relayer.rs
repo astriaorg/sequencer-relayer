@@ -93,7 +93,7 @@ async fn main() {
 
     let sequencer_client =
         SequencerClient::new(args.sequencer_endpoint).expect("failed to create sequencer client");
-    let da_client = CelestiaClient::new(args.celestia_endpoint, keypair)
+    let da_client = CelestiaClient::new(args.celestia_endpoint)
         .expect("failed to create data availability client");
 
     let sleep_duration = time::Duration::from_millis(args.block_time);
@@ -148,7 +148,7 @@ async fn main() {
 
                 let tx_count =
                     sequencer_block.rollup_txs.len() + sequencer_block.sequencer_txs.len();
-                match da_client.submit_block(sequencer_block).await {
+                match da_client.submit_block(sequencer_block, &keypair).await {
                     Ok(_) => info!(
                         "submitted block {} to DA layer: tx count={}",
                         height, &tx_count
