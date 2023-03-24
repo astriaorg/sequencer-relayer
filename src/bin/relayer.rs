@@ -71,7 +71,8 @@ async fn main() {
     // unmarshal validator private key file
     let home_dir = home_dir().unwrap();
     let file_path = format!("{}/{}", home_dir.to_str().unwrap(), args.validator_key_file);
-    println!("{}", file_path);
+    info!("using validator keys located at {}", file_path);
+
     let key_file =
         std::fs::read_to_string(file_path).expect("failed to read validator private key file");
     let key_file: ValidatorPrivateKeyFile =
@@ -84,9 +85,11 @@ async fn main() {
             .0,
     )
     .expect("failed to convert validator private key to keypair");
+
     // generate our bech32 validator address
     let address = validator_hex_to_address(&key_file.address)
         .expect("failed to convert validator address to bech32");
+
     // generate our validator address bytes
     let address_bytes = hex::decode(&key_file.address)
         .expect("failed to decode validator address; must be hex string");

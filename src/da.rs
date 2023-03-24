@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Error};
 use ed25519_dalek::{ed25519::signature::Signature, Keypair, PublicKey, Signer, Verifier};
 use rs_cnc::{CelestiaNodeClient, NamespacedSharesResponse, PayForDataResponse};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -19,6 +20,56 @@ pub struct SubmitBlockResponse {
     pub namespace_to_block_num: HashMap<String, u64>,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(bound = "D: NamespaceData")]
+struct SignedNamespaceData<D: NamespaceData>  {
+    data: D,
+    signature: Base64String,
+}
+
+impl<D: NamespaceData> SignedNamespaceData<D> {
+    fn new(data: D, signature: Base64String) -> Self {
+        Self { data, signature }
+    }
+    
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        // TODO: don't use json, use our own serializer (or protobuf for now?)
+        let string = serde_json::to_string(self).map_err(|e| anyhow!(e))?;
+        Ok(string.into_bytes())
+    }
+
+    fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+        let string = String::from_utf8(bytes.to_vec()).map_err(|e| anyhow!(e))?;
+        let data = serde_json::from_str(&string).map_err(|e| anyhow!(e))?;
+        Ok(data)
+    }
+}
+
+trait NamespaceData where Self: Sized + Serialize + DeserializeOwned {
+    fn hash(&self) -> Result<Vec<u8>, Error> {
+        let mut hasher = Sha256::new();
+        hasher.update(self.to_bytes()?);
+        let hash = hasher.finalize();
+        Ok(hash.to_vec())
+    }
+
+    fn to_signed(
+        self,
+        keypair: &Keypair,
+    ) -> Result<SignedNamespaceData<Self>, Error> {
+        let hash = self.hash()?;
+        let signature = Base64String(keypair.sign(&hash).as_bytes().to_vec());
+        let data = SignedNamespaceData::new(self, signature);
+        Ok(data)
+    }
+
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        // TODO: don't use json, use our own serializer (or protobuf for now?)
+        let string = serde_json::to_string(self).map_err(|e| anyhow!(e))?;
+        Ok(string.into_bytes())
+    }
+}
+
 /// SequencerNamespaceData represents the data written to the "base"
 /// sequencer namespace. It contains all the other namespaces that were
 /// also written to in the same block.
@@ -31,53 +82,7 @@ struct SequencerNamespaceData {
     rollup_namespaces: Vec<(u64, String)>,
 }
 
-impl SequencerNamespaceData {
-    fn hash(&self) -> Result<Vec<u8>, Error> {
-        let mut hasher = Sha256::new();
-        hasher.update(self.to_bytes()?);
-        let hash = hasher.finalize();
-        Ok(hash.to_vec())
-    }
-
-    fn to_signed(
-        self: SequencerNamespaceData,
-        keypair: &Keypair,
-    ) -> Result<SignedSequencerNamespaceData, Error> {
-        let hash = self.hash()?;
-
-        let data = SignedSequencerNamespaceData {
-            data: self,
-            signature: Base64String(keypair.sign(&hash).as_bytes().to_vec()),
-        };
-        Ok(data)
-    }
-
-    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        // TODO: don't use json, use our own serializer (or protobuf for now?)
-        let string = serde_json::to_string(self).map_err(|e| anyhow!(e))?;
-        Ok(string.into_bytes())
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct SignedSequencerNamespaceData {
-    data: SequencerNamespaceData,
-    signature: Base64String,
-}
-
-impl SignedSequencerNamespaceData {
-    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        // TODO: don't use json, use our own serializer (or protobuf for now?)
-        let string = serde_json::to_string(self).map_err(|e| anyhow!(e))?;
-        Ok(string.into_bytes())
-    }
-
-    fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
-        let string = String::from_utf8(bytes.to_vec()).map_err(|e| anyhow!(e))?;
-        let data = serde_json::from_str(&string).map_err(|e| anyhow!(e))?;
-        Ok(data)
-    }
-}
+impl NamespaceData for SequencerNamespaceData {}
 
 /// RollupNamespaceData represents the data written to a rollup namespace.
 #[derive(Serialize, Deserialize, Debug)]
@@ -86,52 +91,7 @@ struct RollupNamespaceData {
     rollup_txs: Vec<IndexedTransaction>,
 }
 
-impl RollupNamespaceData {
-    fn hash(&self) -> Result<Vec<u8>, Error> {
-        let mut hasher = Sha256::new();
-        hasher.update(self.to_bytes()?);
-        let hash = hasher.finalize();
-        Ok(hash.to_vec())
-    }
-
-    fn to_signed(
-        self: RollupNamespaceData,
-        keypair: &Keypair,
-    ) -> Result<SignedRollupNamespaceData, Error> {
-        let hash = self.hash()?;
-        let data = SignedRollupNamespaceData {
-            data: self,
-            signature: Base64String(keypair.sign(&hash).as_bytes().to_vec()),
-        };
-        Ok(data)
-    }
-
-    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        // TODO: don't use json, use our own serializer (or protobuf for now?)
-        let string = serde_json::to_string(self).map_err(|e| anyhow!(e))?;
-        Ok(string.into_bytes())
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct SignedRollupNamespaceData {
-    data: RollupNamespaceData,
-    signature: Base64String,
-}
-
-impl SignedRollupNamespaceData {
-    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        // TODO: don't use json, use our own serializer (or protobuf for now?)
-        let string = serde_json::to_string(self).map_err(|e| anyhow!(e))?;
-        Ok(string.into_bytes())
-    }
-
-    fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
-        let string = String::from_utf8(bytes.to_vec()).map_err(|e| anyhow!(e))?;
-        let data = serde_json::from_str(&string).map_err(|e| anyhow!(e))?;
-        Ok(data)
-    }
-}
+impl NamespaceData for RollupNamespaceData {}
 
 /// CelestiaClient is a DataAvailabilityClient that submits blocks to a Celestia Node.
 pub struct CelestiaClient {
@@ -251,12 +211,12 @@ impl CelestiaClient {
             .await?;
 
         // retrieve all sequencer data stored at this height
-        let sequencer_namespace_datas: Vec<SignedSequencerNamespaceData> = namespaced_data_response
+        let sequencer_namespace_datas: Vec<SignedNamespaceData<SequencerNamespaceData>> = namespaced_data_response
             .data
             .unwrap_or_default()
             .iter()
             .filter_map(|d| {
-                if let Ok(data) = SignedSequencerNamespaceData::from_bytes(&d.0) {
+                if let Ok(data) = SignedNamespaceData::<SequencerNamespaceData>::from_bytes(&d.0) {
                     Some(data)
                 } else {
                     None
@@ -334,12 +294,12 @@ impl CelestiaClient {
             .namespaced_data(rollup_namespace, height)
             .await?;
 
-        let rollup_datas: Vec<SignedRollupNamespaceData> = namespaced_data_response
+        let rollup_datas: Vec<SignedNamespaceData<RollupNamespaceData>> = namespaced_data_response
             .data
             .unwrap_or_default()
             .iter()
             .filter_map(|d| {
-                if let Ok(data) = SignedRollupNamespaceData::from_bytes(&d.0) {
+                if let Ok(data) = SignedNamespaceData::<RollupNamespaceData>::from_bytes(&d.0) {
                     Some(data)
                 } else {
                     warn!("failed to deserialize rollup namespace data");

@@ -52,6 +52,16 @@ pub(crate) fn get_namespace(bytes: &[u8]) -> Namespace {
     Namespace(result[0..8].to_owned().try_into().unwrap())
 }
 
+/// IndexedTransaction represents a sequencer transaction along with the index
+/// it was originally in in the sequencer block.
+/// This is required so that the block's `data_hash`, which is a merkle root
+/// of the transactions in the block, can be verified.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct IndexedTransaction {
+    pub index: usize,
+    pub transaction: Base64String,
+}
+
 /// SequencerBlock represents a sequencer layer block to be submitted to
 /// the DA layer.
 /// TODO: compression or a better serialization method?
@@ -67,16 +77,6 @@ pub struct SequencerBlock {
     pub sequencer_txs: Vec<IndexedTransaction>,
     /// namespace -> rollup txs
     pub rollup_txs: HashMap<Namespace, Vec<IndexedTransaction>>,
-}
-
-/// IndexedTransaction represents a sequencer transaction along with the index
-/// it was originally in in the sequencer block.
-/// This is required so that the block's `data_hash`, which is a merkle root
-/// of the transactions in the block, can be verified.
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct IndexedTransaction {
-    pub index: usize,
-    pub transaction: Base64String,
 }
 
 impl SequencerBlock {
