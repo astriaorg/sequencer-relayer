@@ -262,6 +262,8 @@ impl CelestiaClient {
 
         let mut blocks = vec![];
 
+        // TODO: there should NOT be multiple datas with the same block hash and signer
+
         // for all the sequencer blocks retrieved, create the corresponding SequencerBlock
         for sequencer_namespace_data in &sequencer_namespace_datas {
             let rollup_namespaces = sequencer_namespace_data.data.rollup_namespaces.clone();
@@ -298,6 +300,8 @@ impl CelestiaClient {
                         }
                     })
                     .collect();
+
+                // TODO: there should NOT be multiple datas with the same block hash and signer
 
                 for rollup_data in rollup_datas {
                     // TODO: there a chance multiple blocks could be written with the same block hash, however

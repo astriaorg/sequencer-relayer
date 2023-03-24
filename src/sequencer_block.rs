@@ -5,7 +5,7 @@ use prost::{DecodeError, Message};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use tracing::{debug, warn};
+use tracing::debug;
 
 use crate::base64_string::Base64String;
 use crate::proto::SequencerMsg;
@@ -184,15 +184,7 @@ fn cosmos_tx_body_to_sequencer_msgs(tx_body: TxBody) -> Result<Vec<SequencerMsg>
     tx_body
         .messages
         .iter()
-        .filter(|msg| {
-            if msg.type_url != SEQUENCER_TYPE_URL {
-                // TODO: do we want to write sequencer "primary txs" to the DA layer?
-                warn!("ignoring message with non-sequencer type URL: {:?}", msg);
-                false
-            } else {
-                true
-            }
-        })
+        .filter(|msg| msg.type_url == SEQUENCER_TYPE_URL)
         .map(|msg| SequencerMsg::decode(msg.value.as_slice()))
         .collect::<Result<Vec<SequencerMsg>, DecodeError>>()
         .map_err(|e| anyhow!(e))

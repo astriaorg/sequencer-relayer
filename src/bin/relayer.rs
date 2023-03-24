@@ -1,5 +1,6 @@
 use bech32::{self, ToBase32, Variant};
 use clap::Parser;
+use dirs::home_dir;
 use serde::Deserialize;
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
@@ -35,7 +36,7 @@ struct Args {
     block_time: u64,
 
     /// Path to validator private key file.
-    #[arg(short, long, default_value = "~/.metro/config/priv_validator_key.json")]
+    #[arg(short, long, default_value = ".metro/config/priv_validator_key.json")]
     validator_key_file: String,
 
     /// Log level. One of debug, info, warn, or error
@@ -68,8 +69,11 @@ async fn main() {
         .init();
 
     // unmarshal validator private key file
-    let key_file = std::fs::read_to_string(args.validator_key_file)
-        .expect("failed to read validator private key file");
+    let home_dir = home_dir().unwrap();
+    let file_path = format!("{}/{}", home_dir.to_str().unwrap(), args.validator_key_file);
+    println!("{}", file_path);
+    let key_file =
+        std::fs::read_to_string(file_path).expect("failed to read validator private key file");
     let key_file: ValidatorPrivateKeyFile =
         serde_json::from_str(&key_file).expect("failed to unmarshal validator key file");
 
