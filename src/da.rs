@@ -16,7 +16,7 @@ static DEFAULT_PFD_GAS_LIMIT: u64 = 90_000;
 /// SubmitBlockResponse is the response to a SubmitBlock request.
 /// It contains a map of namespaces to the block number that it was written to.
 pub struct SubmitBlockResponse {
-    pub namespace_to_block_num: HashMap<String, Option<u64>>,
+    pub namespace_to_block_num: HashMap<String, u64>,
 }
 
 /// SequencerNamespaceData represents the data written to the "base"
@@ -140,6 +140,9 @@ pub struct CelestiaClient {
 }
 
 impl CelestiaClient {
+    /// new creates a new CelestiaClient with the given keypair.
+    /// the keypair is used to sign the data that is submitted to Celestia,
+    /// specifically within submit_block.
     pub fn new(endpoint: String, keypair: Keypair) -> Result<Self, Error> {
         let cnc = CelestiaNodeClient::new(endpoint)?;
         Ok(CelestiaClient {
@@ -165,11 +168,15 @@ impl CelestiaClient {
         Ok(pay_for_data_response)
     }
 
+    /// submit_block submits a block to Celestia.
+    /// It first writes all the rollup namespace data, then writes the sequencer namespace data.
+    /// The sequencer namespace data contains all the rollup namespaces that were written,
+    /// along with any transactions that were not for a specific rollup.
     pub async fn submit_block(&self, block: SequencerBlock) -> Result<SubmitBlockResponse, Error> {
-        let mut namespace_to_block_num: HashMap<String, Option<u64>> = HashMap::new();
+        let mut namespace_to_block_num: HashMap<String, u64> = HashMap::new();
         let mut block_height_and_namespace: Vec<(u64, String)> = Vec::new();
 
-        // then, format and submit data for each rollup namespace
+        // first, format and submit data for each rollup namespace
         for (namespace, txs) in block.rollup_txs {
             debug!(
                 "submitting rollup namespace data for namespace {}",
@@ -183,12 +190,16 @@ impl CelestiaClient {
             let resp = self
                 .submit_namespaced_data(&namespace.to_string(), &rollup_data_bytes)
                 .await?;
-            namespace_to_block_num.insert(namespace.to_string(), resp.height);
+
+            if resp.height.is_none() {
+                return Err(anyhow!("no height returned from pay for data"));
+            }
+
+            namespace_to_block_num.insert(namespace.to_string(), resp.height.unwrap());
             block_height_and_namespace.push((resp.height.unwrap(), namespace.to_string()))
-            // TODO: no unwrap
         }
 
-        // first, format and submit data to the base sequencer namespace
+        // then, format and submit data to the base sequencer namespace
         let sequencer_namespace_data = SequencerNamespaceData {
             block_hash: block.block_hash.clone(),
             header: block.header,
@@ -202,13 +213,19 @@ impl CelestiaClient {
         let resp = self
             .submit_namespaced_data(&DEFAULT_NAMESPACE.to_string(), &bytes)
             .await?;
-        namespace_to_block_num.insert(DEFAULT_NAMESPACE.to_string(), resp.height);
+
+        if resp.height.is_none() {
+            return Err(anyhow!("no height returned from pay for data"));
+        }
+
+        namespace_to_block_num.insert(DEFAULT_NAMESPACE.to_string(), resp.height.unwrap());
 
         Ok(SubmitBlockResponse {
             namespace_to_block_num,
         })
     }
 
+    /// check_block_availability checks if what shares are written to a given height.
     pub async fn check_block_availability(
         &self,
         height: u64,
@@ -220,6 +237,11 @@ impl CelestiaClient {
         Ok(resp)
     }
 
+    /// get_blocks retrieves all blocks written to Celestia by the given public key
+    /// at the given height.
+    /// It might return multiple blocks, because there might be multiple written to
+    /// the same height by the same proposer somehow.
+    /// The caller should probably check that there are no duplicate or conflicting blocks.
     pub async fn get_blocks(
         &self,
         height: u64,
@@ -245,6 +267,7 @@ impl CelestiaClient {
             .collect();
 
         // find data that was signed by the given public key
+        // TODO: there should NOT be multiple datas with the same block hash and signer
         let sequencer_namespace_datas = sequencer_namespace_datas
             .into_iter()
             .filter(|d| {
@@ -262,57 +285,31 @@ impl CelestiaClient {
 
         let mut blocks = vec![];
 
-        // TODO: there should NOT be multiple datas with the same block hash and signer
-
-        // for all the sequencer blocks retrieved, create the corresponding SequencerBlock
+        // for all the sequencer datas retrieved, create the corresponding SequencerBlock
         for sequencer_namespace_data in &sequencer_namespace_datas {
             let rollup_namespaces = sequencer_namespace_data.data.rollup_namespaces.clone();
             let mut rollup_txs_map = HashMap::new();
 
-            // for each rollup namespace, retrieve the corresponding rollup block
+            // for each rollup namespace, retrieve the corresponding rollup data
             for (height, rollup_namespace) in rollup_namespaces {
-                let namespaced_data_response = self
-                    .client
-                    .namespaced_data(&rollup_namespace.to_string(), height)
+                let rollup_txs = self
+                    .get_rollup_data_for_block(
+                        &sequencer_namespace_data.data.block_hash.0,
+                        &rollup_namespace,
+                        height,
+                        &public_key,
+                    )
                     .await?;
-
-                let rollup_datas: Vec<SignedRollupNamespaceData> = namespaced_data_response
-                    .data
-                    .unwrap_or_default()
-                    .iter()
-                    .filter_map(|d| {
-                        if let Ok(data) = SignedRollupNamespaceData::from_bytes(&d.0) {
-                            Some(data)
-                        } else {
-                            warn!("failed to deserialize rollup namespace data");
-                            None
-                        }
-                    })
-                    .filter(|d| {
-                        let hash = match d.data.hash() {
-                            Ok(hash) => hash,
-                            Err(_) => return false,
-                        };
-
-                        match Signature::from_bytes(&d.signature.0) {
-                            Ok(sig) => public_key.verify(&hash, &sig).is_ok(),
-                            Err(_) => false,
-                        }
-                    })
-                    .collect();
-
-                // TODO: there should NOT be multiple datas with the same block hash and signer
-
-                for rollup_data in rollup_datas {
-                    // TODO: there a chance multiple blocks could be written with the same block hash, however
-                    // only one will be valid; we need to sign this before submitting and verify sig upon reading
-                    if rollup_data.data.block_hash == sequencer_namespace_data.data.block_hash {
-                        let namespace = Namespace::from_string(&rollup_namespace)?;
-                        // this replaces what was already in the map, this is bad, but ok for now
-                        // since we need to implementation sig verification anyways.
-                        rollup_txs_map.insert(namespace, rollup_data.data.rollup_txs);
-                    }
+                if rollup_txs.is_none() {
+                    // this shouldn't happen; if a sequencer block claims to have written data to some
+                    // rollup namespace, it should exist
+                    warn!("no rollup data found for namespace {}", rollup_namespace);
+                    continue;
                 }
+                rollup_txs_map.insert(
+                    Namespace::from_string(&rollup_namespace)?,
+                    rollup_txs.unwrap(),
+                );
             }
 
             blocks.push(SequencerBlock {
@@ -320,10 +317,62 @@ impl CelestiaClient {
                 header: sequencer_namespace_data.data.header.clone(),
                 sequencer_txs: sequencer_namespace_data.data.sequencer_txs.clone(),
                 rollup_txs: rollup_txs_map,
-            });
+            })
         }
 
         Ok(blocks)
+    }
+
+    async fn get_rollup_data_for_block(
+        &self,
+        block_hash: &[u8],
+        rollup_namespace: &str,
+        height: u64,
+        public_key: &PublicKey,
+    ) -> Result<Option<Vec<IndexedTransaction>>, Error> {
+        let namespaced_data_response = self
+            .client
+            .namespaced_data(rollup_namespace, height)
+            .await?;
+
+        let rollup_datas: Vec<SignedRollupNamespaceData> = namespaced_data_response
+            .data
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|d| {
+                if let Ok(data) = SignedRollupNamespaceData::from_bytes(&d.0) {
+                    Some(data)
+                } else {
+                    warn!("failed to deserialize rollup namespace data");
+                    None
+                }
+            })
+            .filter(|d| {
+                let hash = match d.data.hash() {
+                    Ok(hash) => hash,
+                    Err(_) => return false,
+                };
+
+                match Signature::from_bytes(&d.signature.0) {
+                    Ok(sig) => public_key.verify(&hash, &sig).is_ok(),
+                    Err(_) => false,
+                }
+            })
+            .filter(|d| d.data.block_hash.0 == block_hash)
+            .collect();
+
+        // there should NOT be multiple datas with the same block hash and signer
+        if rollup_datas.len() > 1 {
+            return Err(anyhow!(
+                "multiple rollup datas with the same block hash and signer"
+            ));
+        }
+
+        if rollup_datas.is_empty() {
+            return Ok(None);
+        }
+
+        Ok(Some(rollup_datas[0].data.rollup_txs.clone()))
     }
 }
 
@@ -338,11 +387,39 @@ mod tests {
     use crate::sequencer_block::{get_namespace, IndexedTransaction};
 
     #[tokio::test]
-    async fn test_celestia_client() {
-        // unfortunately, this needs to be all one test for now, since
-        // submitting multiple blocks to celestia concurrently returns
-        // "incorrect account sequence" errors.
+    async fn test_get_blocks_public_key_filter() {
+        // test that get_blocks only gets blocked signed with a specific key
+        let keypair = Keypair::generate(&mut OsRng);
+        let base_url = "http://localhost:26659".to_string();
+        let client = CelestiaClient::new(base_url, keypair).unwrap();
+        let tx = Base64String(b"noot_was_here".to_vec());
 
+        let block_hash = Base64String(vec![99; 32]);
+        let block = SequencerBlock {
+            block_hash: block_hash.clone(),
+            header: Default::default(),
+            sequencer_txs: vec![IndexedTransaction {
+                index: 0,
+                transaction: tx.clone(),
+            }],
+            rollup_txs: HashMap::new(),
+        };
+
+        let submit_block_resp = client.submit_block(block).await.unwrap();
+        let height = submit_block_resp
+            .namespace_to_block_num
+            .get(&DEFAULT_NAMESPACE.to_string())
+            .unwrap();
+
+        // generate new, different key
+        let keypair = Keypair::generate(&mut OsRng);
+        let public_key = PublicKey::from_bytes(&keypair.public.to_bytes()).unwrap();
+        let resp = client.get_blocks(*height, public_key).await.unwrap();
+        assert!(resp.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_celestia_client() {
         // test submit_block
         let keypair = Keypair::generate(&mut OsRng);
         let public_key = PublicKey::from_bytes(&keypair.public.to_bytes()).unwrap();
@@ -372,19 +449,17 @@ mod tests {
         );
 
         let submit_block_resp = client.submit_block(block).await.unwrap();
-        #[allow(clippy::unnecessary_to_owned)]
         let height = submit_block_resp
             .namespace_to_block_num
             .get(&DEFAULT_NAMESPACE.to_string())
-            .unwrap()
             .unwrap();
 
         // test check_block_availability
-        let resp = client.check_block_availability(height).await.unwrap();
-        assert_eq!(resp.height, height);
+        let resp = client.check_block_availability(*height).await.unwrap();
+        assert_eq!(resp.height, *height);
 
         // test get_blocks
-        let resp = client.get_blocks(height, public_key).await.unwrap();
+        let resp = client.get_blocks(*height, public_key).await.unwrap();
         assert_eq!(resp.len(), 1);
         assert_eq!(resp[0].block_hash, block_hash);
         assert_eq!(resp[0].header, Default::default());

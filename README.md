@@ -38,7 +38,7 @@ docker compose -f docker/test-docker-compose.yml up -d bridge0
 
 Then, you can run the unit tests:
 ```bash
-cargo test
+cargo test -- --test-threads=1
 ```
 
 ## Run
