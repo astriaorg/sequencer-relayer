@@ -22,7 +22,7 @@ pub struct SubmitBlockResponse {
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(bound = "D: NamespaceData")]
-struct SignedNamespaceData<D: NamespaceData>  {
+struct SignedNamespaceData<D: NamespaceData> {
     data: D,
     signature: Base64String,
 }
@@ -31,7 +31,7 @@ impl<D: NamespaceData> SignedNamespaceData<D> {
     fn new(data: D, signature: Base64String) -> Self {
         Self { data, signature }
     }
-    
+
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         // TODO: don't use json, use our own serializer (or protobuf for now?)
         let string = serde_json::to_string(self).map_err(|e| anyhow!(e))?;
@@ -45,7 +45,10 @@ impl<D: NamespaceData> SignedNamespaceData<D> {
     }
 }
 
-trait NamespaceData where Self: Sized + Serialize + DeserializeOwned {
+trait NamespaceData
+where
+    Self: Sized + Serialize + DeserializeOwned,
+{
     fn hash(&self) -> Result<Vec<u8>, Error> {
         let mut hasher = Sha256::new();
         hasher.update(self.to_bytes()?);
@@ -53,10 +56,7 @@ trait NamespaceData where Self: Sized + Serialize + DeserializeOwned {
         Ok(hash.to_vec())
     }
 
-    fn to_signed(
-        self,
-        keypair: &Keypair,
-    ) -> Result<SignedNamespaceData<Self>, Error> {
+    fn to_signed(self, keypair: &Keypair) -> Result<SignedNamespaceData<Self>, Error> {
         let hash = self.hash()?;
         let signature = Base64String(keypair.sign(&hash).as_bytes().to_vec());
         let data = SignedNamespaceData::new(self, signature);
@@ -211,18 +211,21 @@ impl CelestiaClient {
             .await?;
 
         // retrieve all sequencer data stored at this height
-        let sequencer_namespace_datas: Vec<SignedNamespaceData<SequencerNamespaceData>> = namespaced_data_response
-            .data
-            .unwrap_or_default()
-            .iter()
-            .filter_map(|d| {
-                if let Ok(data) = SignedNamespaceData::<SequencerNamespaceData>::from_bytes(&d.0) {
-                    Some(data)
-                } else {
-                    None
-                }
-            })
-            .collect();
+        let sequencer_namespace_datas: Vec<SignedNamespaceData<SequencerNamespaceData>> =
+            namespaced_data_response
+                .data
+                .unwrap_or_default()
+                .iter()
+                .filter_map(|d| {
+                    if let Ok(data) =
+                        SignedNamespaceData::<SequencerNamespaceData>::from_bytes(&d.0)
+                    {
+                        Some(data)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
 
         // find data that was signed by the given public key
         // TODO: there should NOT be multiple datas with the same block hash and signer;
