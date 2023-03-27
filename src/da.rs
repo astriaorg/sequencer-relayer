@@ -21,8 +21,7 @@ pub struct SubmitBlockResponse {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-#[serde(bound = "D: NamespaceData")]
-struct SignedNamespaceData<D: NamespaceData> {
+struct SignedNamespaceData<D> {
     data: D,
     signature: Base64String,
 }
