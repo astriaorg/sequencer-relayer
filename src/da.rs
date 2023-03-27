@@ -195,15 +195,15 @@ impl CelestiaClient {
         Ok(resp)
     }
 
-    /// get_blocks retrieves all blocks written to Celestia by the given public key
-    /// at the given height.
+    /// get_blocks retrieves all blocks written to Celestia at the given height.
+    /// If a public key is provided, it will only return blocks signed by that public key.
     /// It might return multiple blocks, because there might be multiple written to
-    /// the same height by the same proposer somehow.
-    /// The caller should probably check that there are no duplicate or conflicting blocks.
+    /// the same height.
+    /// The caller should probably check that there are no conflicting blocks.
     pub async fn get_blocks(
         &self,
         height: u64,
-        public_key: &PublicKey,
+        public_key: Option<&PublicKey>,
     ) -> Result<Vec<SequencerBlock>, Error> {
         let namespaced_data_response = self
             .client
@@ -239,7 +239,12 @@ impl CelestiaClient {
                 };
 
                 match Signature::from_bytes(&d.signature.0) {
-                    Ok(sig) => public_key.verify(&hash, &sig).is_ok(),
+                    Ok(sig) => {
+                        if public_key.is_none() {
+                            return true;
+                        }
+                        public_key.unwrap().verify(&hash, &sig).is_ok()
+                    }
                     Err(_) => false,
                 }
             })
@@ -290,7 +295,7 @@ impl CelestiaClient {
         block_hash: &[u8],
         rollup_namespace: &str,
         height: u64,
-        public_key: &PublicKey,
+        public_key: Option<&PublicKey>,
     ) -> Result<Option<Vec<IndexedTransaction>>, Error> {
         let namespaced_data_response = self
             .client
@@ -316,7 +321,12 @@ impl CelestiaClient {
                 };
 
                 match Signature::from_bytes(&d.signature.0) {
-                    Ok(sig) => public_key.verify(&hash, &sig).is_ok(),
+                    Ok(sig) => {
+                        if public_key.is_none() {
+                            return true;
+                        }
+                        public_key.unwrap().verify(&hash, &sig).is_ok()
+                    }
                     Err(_) => false,
                 }
             })
@@ -376,7 +386,7 @@ mod tests {
         // generate new, different key
         let keypair = Keypair::generate(&mut OsRng);
         let public_key = PublicKey::from_bytes(&keypair.public.to_bytes()).unwrap();
-        let resp = client.get_blocks(*height, &public_key).await.unwrap();
+        let resp = client.get_blocks(*height, Some(&public_key)).await.unwrap();
         assert!(resp.is_empty());
     }
 
@@ -421,7 +431,7 @@ mod tests {
         assert_eq!(resp.height, *height);
 
         // test get_blocks
-        let resp = client.get_blocks(*height, &public_key).await.unwrap();
+        let resp = client.get_blocks(*height, Some(&public_key)).await.unwrap();
         assert_eq!(resp.len(), 1);
         assert_eq!(resp[0].block_hash, block_hash);
         assert_eq!(resp[0].header, Default::default());

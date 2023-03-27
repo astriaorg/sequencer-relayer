@@ -174,13 +174,13 @@ impl SequencerBlock {
     }
 }
 
-fn parse_cosmos_tx(tx: &Base64String) -> Result<TxBody, Error> {
+pub fn parse_cosmos_tx(tx: &Base64String) -> Result<TxBody, Error> {
     let tx_raw = TxRaw::decode(tx.0.as_slice())?;
     let tx_body = TxBody::decode(tx_raw.body_bytes.as_slice())?;
     Ok(tx_body)
 }
 
-fn cosmos_tx_body_to_sequencer_msgs(tx_body: TxBody) -> Result<Vec<SequencerMsg>, Error> {
+pub fn cosmos_tx_body_to_sequencer_msgs(tx_body: TxBody) -> Result<Vec<SequencerMsg>, Error> {
     tx_body
         .messages
         .iter()
