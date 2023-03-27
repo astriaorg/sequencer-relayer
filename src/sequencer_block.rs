@@ -44,8 +44,8 @@ impl Namespace {
     }
 }
 
-// get_namespace returns an 8-byte namespace given a byte slice.
-pub(crate) fn get_namespace(bytes: &[u8]) -> Namespace {
+/// get_namespace returns an 8-byte namespace given a byte slice.
+pub fn get_namespace(bytes: &[u8]) -> Namespace {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     let result = hasher.finalize();

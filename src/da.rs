@@ -221,10 +221,10 @@ impl CelestiaClient {
                 let data = SignedNamespaceData::<SequencerNamespaceData>::from_bytes(&d.0).ok()?;
                 let hash = data.data.hash().ok()?;
                 let signature = Signature::from_bytes(&data.signature.0).ok()?;
-                if public_key.is_none() {
+                let Some(public_key) = public_key else {
                     return Some(data);
-                }
-                public_key.unwrap().verify(&hash, &signature).ok()?;
+                };
+                public_key.verify(&hash, &signature).ok()?;
                 Some(data)
             })
             .collect::<Vec<_>>();
@@ -299,10 +299,10 @@ impl CelestiaClient {
 
                 match Signature::from_bytes(&d.signature.0) {
                     Ok(sig) => {
-                        if public_key.is_none() {
+                        let Some(public_key) = public_key else {
                             return true;
-                        }
-                        public_key.unwrap().verify(&hash, &sig).is_ok()
+                        };
+                        public_key.verify(&hash, &sig).is_ok()
                     }
                     Err(_) => false,
                 }
