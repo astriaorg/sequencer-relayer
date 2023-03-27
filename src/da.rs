@@ -211,59 +211,38 @@ impl CelestiaClient {
             .await?;
 
         // retrieve all sequencer data stored at this height
-        let sequencer_namespace_datas: Vec<SignedNamespaceData<SequencerNamespaceData>> =
-            namespaced_data_response
-                .data
-                .unwrap_or_default()
-                .iter()
-                .filter_map(|d| {
-                    if let Ok(data) =
-                        SignedNamespaceData::<SequencerNamespaceData>::from_bytes(&d.0)
-                    {
-                        Some(data)
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-        // find data that was signed by the given public key
-        // TODO: there should NOT be multiple datas with the same block hash and signer;
+        // optionally, only find data that was signed by the given public key
+        // NOTE: there should NOT be multiple datas with the same block hash and signer;
         // should we check here, or should the caller check?
-        let sequencer_namespace_datas = sequencer_namespace_datas
-            .into_iter()
-            .filter(|d| {
-                let hash = match d.data.hash() {
-                    Ok(hash) => hash,
-                    Err(_) => return false,
-                };
-
-                match Signature::from_bytes(&d.signature.0) {
-                    Ok(sig) => {
-                        if public_key.is_none() {
-                            return true;
-                        }
-                        public_key.unwrap().verify(&hash, &sig).is_ok()
-                    }
-                    Err(_) => false,
+        let sequencer_namespace_datas = namespaced_data_response
+            .data
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|d| {
+                let data = SignedNamespaceData::<SequencerNamespaceData>::from_bytes(&d.0).ok()?;
+                let hash = data.data.hash().ok()?;
+                let signature = Signature::from_bytes(&data.signature.0).ok()?;
+                if public_key.is_none() {
+                    return Some(data);
                 }
+                public_key.unwrap().verify(&hash, &signature).ok()?;
+                Some(data)
             })
             .collect::<Vec<_>>();
 
-        let mut blocks = vec![];
+        let mut blocks = Vec::with_capacity(sequencer_namespace_datas.len());
 
         // for all the sequencer datas retrieved, create the corresponding SequencerBlock
         for sequencer_namespace_data in &sequencer_namespace_datas {
-            let rollup_namespaces = sequencer_namespace_data.data.rollup_namespaces.clone();
             let mut rollup_txs_map = HashMap::new();
 
             // for each rollup namespace, retrieve the corresponding rollup data
-            for (height, rollup_namespace) in rollup_namespaces {
+            for (height, rollup_namespace) in &sequencer_namespace_data.data.rollup_namespaces {
                 let rollup_txs = self
                     .get_rollup_data_for_block(
                         &sequencer_namespace_data.data.block_hash.0,
-                        &rollup_namespace,
-                        height,
+                        rollup_namespace,
+                        *height,
                         public_key,
                     )
                     .await?;
@@ -274,7 +253,7 @@ impl CelestiaClient {
                     continue;
                 }
                 rollup_txs_map.insert(
-                    Namespace::from_string(&rollup_namespace)?,
+                    Namespace::from_string(rollup_namespace)?,
                     rollup_txs.unwrap(),
                 );
             }
@@ -302,9 +281,8 @@ impl CelestiaClient {
             .namespaced_data(rollup_namespace, height)
             .await?;
 
-        let rollup_datas: Vec<SignedNamespaceData<RollupNamespaceData>> = namespaced_data_response
-            .data
-            .unwrap_or_default()
+        let datas = namespaced_data_response.data.unwrap_or_default();
+        let mut rollup_datas = datas
             .iter()
             .filter_map(|d| {
                 if let Ok(data) = SignedNamespaceData::<RollupNamespaceData>::from_bytes(&d.0) {
@@ -330,21 +308,20 @@ impl CelestiaClient {
                     Err(_) => false,
                 }
             })
-            .filter(|d| d.data.block_hash.0 == block_hash)
-            .collect();
+            .filter(|d| d.data.block_hash.0 == block_hash);
+
+        let Some(rollup_data_for_block) = rollup_datas.next() else {
+            return Ok(None);
+        };
 
         // there should NOT be multiple datas with the same block hash and signer
-        if rollup_datas.len() > 1 {
+        if rollup_datas.next().is_some() {
             return Err(anyhow!(
                 "multiple rollup datas with the same block hash and signer"
             ));
         }
 
-        if rollup_datas.is_empty() {
-            return Ok(None);
-        }
-
-        Ok(Some(rollup_datas[0].data.rollup_txs.clone()))
+        Ok(Some(rollup_data_for_block.data.rollup_txs))
     }
 }
 

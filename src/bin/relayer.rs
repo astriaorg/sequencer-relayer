@@ -70,8 +70,8 @@ async fn main() {
 
     // unmarshal validator private key file
     let home_dir = home_dir().unwrap();
-    let file_path = format!("{}/{}", home_dir.to_str().unwrap(), args.validator_key_file);
-    info!("using validator keys located at {}", file_path);
+    let file_path = home_dir.join(&args.validator_key_file);
+    info!("using validator keys located at {}", file_path.display());
 
     let key_file =
         std::fs::read_to_string(file_path).expect("failed to read validator private key file");

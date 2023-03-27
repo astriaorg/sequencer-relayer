@@ -1,10 +1,10 @@
-use anyhow::{anyhow, Error};
+use anyhow::{Context, Error};
 use bech32::{self, ToBase32, Variant};
 use ed25519_dalek::{Keypair, PublicKey};
 
 pub fn private_key_bytes_to_keypair(private_key: &[u8]) -> Result<Keypair, Error> {
-    let private_key =
-        ed25519_dalek::SecretKey::from_bytes(&private_key[..32]).map_err(|e| anyhow!(e))?;
+    let private_key = ed25519_dalek::SecretKey::from_bytes(&private_key[..32])
+        .context("failed reading secret key from bytes")?;
     let public_key = PublicKey::from(&private_key);
     Ok(Keypair {
         secret: private_key,
