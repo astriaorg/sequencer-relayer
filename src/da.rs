@@ -351,6 +351,15 @@ mod tests {
     use crate::sequencer_block::{get_namespace, IndexedTransaction};
 
     #[tokio::test]
+    async fn test_get_latest_height() {
+        // TODO: put these defaults somewhere, use them in bin/relayer
+        let base_url = "http://localhost:26659".to_string();
+        let client = CelestiaClient::new(base_url).unwrap();
+        let height = client.get_latest_height().await.unwrap();
+        assert!(height > 0);
+    }
+
+    #[tokio::test]
     async fn test_get_blocks_public_key_filter() {
         // test that get_blocks only gets blocked signed with a specific key
         let keypair = Keypair::generate(&mut OsRng);
