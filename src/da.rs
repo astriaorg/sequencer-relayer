@@ -1,5 +1,5 @@
 use ed25519_dalek::{ed25519::signature::Signature, Keypair, PublicKey, Signer, Verifier};
-use eyre::{eyre, Result};
+use eyre::eyre;
 use rs_cnc::{CelestiaNodeClient, NamespacedSharesResponse, PayForDataResponse};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -33,13 +33,13 @@ impl<D: NamespaceData> SignedNamespaceData<D> {
         Self { data, signature }
     }
 
-    fn to_bytes(&self) -> Result<Vec<u8>> {
+    fn to_bytes(&self) -> eyre::Result<Vec<u8>> {
         // TODO: don't use json, use our own serializer (or protobuf for now?)
         let string = serde_json::to_string(self).map_err(|e| eyre!(e))?;
         Ok(string.into_bytes())
     }
 
-    fn from_bytes(bytes: &[u8]) -> Result<Self> {
+    fn from_bytes(bytes: &[u8]) -> eyre::Result<Self> {
         let string = String::from_utf8(bytes.to_vec()).map_err(|e| eyre!(e))?;
         let data = serde_json::from_str(&string).map_err(|e| eyre!(e))?;
         Ok(data)
@@ -50,21 +50,21 @@ trait NamespaceData
 where
     Self: Sized + Serialize + DeserializeOwned,
 {
-    fn hash(&self) -> Result<Vec<u8>> {
+    fn hash(&self) -> eyre::Result<Vec<u8>> {
         let mut hasher = Sha256::new();
         hasher.update(self.to_bytes()?);
         let hash = hasher.finalize();
         Ok(hash.to_vec())
     }
 
-    fn to_signed(self, keypair: &Keypair) -> Result<SignedNamespaceData<Self>> {
+    fn to_signed(self, keypair: &Keypair) -> eyre::Result<SignedNamespaceData<Self>> {
         let hash = self.hash()?;
         let signature = Base64String(keypair.sign(&hash).as_bytes().to_vec());
         let data = SignedNamespaceData::new(self, signature);
         Ok(data)
     }
 
-    fn to_bytes(&self) -> Result<Vec<u8>> {
+    fn to_bytes(&self) -> eyre::Result<Vec<u8>> {
         // TODO: don't use json, use our own serializer (or protobuf for now?)
         let string = serde_json::to_string(self).map_err(|e| eyre!(e))?;
         Ok(string.into_bytes())
@@ -103,12 +103,12 @@ impl CelestiaClient {
     /// new creates a new CelestiaClient with the given keypair.
     /// the keypair is used to sign the data that is submitted to Celestia,
     /// specifically within submit_block.
-    pub fn new(endpoint: String) -> Result<Self> {
+    pub fn new(endpoint: String) -> eyre::Result<Self> {
         let cnc = CelestiaNodeClient::new(endpoint).map_err(|e| eyre!(e))?;
         Ok(CelestiaClient { client: cnc })
     }
 
-    pub async fn get_latest_height(&self) -> Result<u64> {
+    pub async fn get_latest_height(&self) -> eyre::Result<u64> {
         let res = self
             .client
             .namespaced_data(&DEFAULT_NAMESPACE.to_string(), 0)
@@ -124,7 +124,7 @@ impl CelestiaClient {
         &self,
         namespace: &str,
         data: &[u8],
-    ) -> Result<PayForDataResponse> {
+    ) -> eyre::Result<PayForDataResponse> {
         let pay_for_data_response = self
             .client
             .submit_pay_for_data(
@@ -146,7 +146,7 @@ impl CelestiaClient {
         &self,
         block: SequencerBlock,
         keypair: &Keypair,
-    ) -> Result<SubmitBlockResponse> {
+    ) -> eyre::Result<SubmitBlockResponse> {
         let mut namespace_to_block_num: HashMap<String, u64> = HashMap::new();
         let mut block_height_and_namespace: Vec<(u64, String)> = Vec::new();
 
@@ -199,7 +199,7 @@ impl CelestiaClient {
     }
 
     /// check_block_availability checks if what shares are written to a given height.
-    pub async fn check_block_availability(&self, height: u64) -> Result<NamespacedSharesResponse> {
+    pub async fn check_block_availability(&self, height: u64) -> eyre::Result<NamespacedSharesResponse> {
         let resp = self
             .client
             .namespaced_shares(&DEFAULT_NAMESPACE.to_string(), height)
@@ -217,7 +217,7 @@ impl CelestiaClient {
         &self,
         height: u64,
         public_key: Option<&PublicKey>,
-    ) -> Result<Vec<SequencerBlock>> {
+    ) -> eyre::Result<Vec<SequencerBlock>> {
         let namespaced_data_response = self
             .client
             .namespaced_data(&DEFAULT_NAMESPACE.to_string(), height)
@@ -289,7 +289,7 @@ impl CelestiaClient {
         rollup_namespace: &str,
         height: u64,
         public_key: Option<&PublicKey>,
-    ) -> Result<Option<Vec<IndexedTransaction>>> {
+    ) -> eyre::Result<Option<Vec<IndexedTransaction>>> {
         let namespaced_data_response = self
             .client
             .namespaced_data(rollup_namespace, height)
