@@ -1,5 +1,5 @@
 use ed25519_dalek::{ed25519::signature::Signature, Keypair, PublicKey, Signer, Verifier};
-use eyre::eyre;
+use eyre::{eyre, WrapErr as _};
 use rs_cnc::{CelestiaNodeClient, NamespacedSharesResponse, PayForDataResponse};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -35,14 +35,13 @@ impl<D: NamespaceData> SignedNamespaceData<D> {
 
     fn to_bytes(&self) -> eyre::Result<Vec<u8>> {
         // TODO: don't use json, use our own serializer (or protobuf for now?)
-        let string = serde_json::to_string(self).map_err(|e| eyre!(e))?;
-        Ok(string.into_bytes())
+        serde_json::to_vec(self)
+            .wrap_err("failed serializing signed namespace data to json")
     }
 
     fn from_bytes(bytes: &[u8]) -> eyre::Result<Self> {
-        let string = String::from_utf8(bytes.to_vec()).map_err(|e| eyre!(e))?;
-        let data = serde_json::from_str(&string).map_err(|e| eyre!(e))?;
-        Ok(data)
+        serde_json::from_slice(bytes)
+            .wrap_err("failed deserializing signed namespace data from bytes")
     }
 }
 

@@ -14,7 +14,7 @@ hex = "0.4"
 prost = "0.11"
 prost-types = "0.11"
 rand = { version = "0.7", features = [ "getrandom" ] }
-rs-cnc = { git = "https://github.com/astriaorg/rs-cnc.git" }
+rs-cnc = { git = "https://github.com/astriaorg/rs-cnc.git", branch = "cleanup_error_handling" }
 reqwest = { version = "0.11", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
