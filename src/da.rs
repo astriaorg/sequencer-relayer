@@ -51,13 +51,13 @@ where
 {
     fn hash(&self) -> eyre::Result<Vec<u8>> {
         let mut hasher = Sha256::new();
-        hasher.update(self.to_bytes()?);
+        hasher.update(self.to_bytes().wrap_err("failed converting namespace data to bytes")?);
         let hash = hasher.finalize();
         Ok(hash.to_vec())
     }
 
     fn to_signed(self, keypair: &Keypair) -> eyre::Result<SignedNamespaceData<Self>> {
-        let hash = self.hash()?;
+        let hash = self.hash().wrap_err("failed hashing namespace data")?;
         let signature = Base64String(keypair.sign(&hash).as_bytes().to_vec());
         let data = SignedNamespaceData::new(self, signature);
         Ok(data)
@@ -65,8 +65,8 @@ where
 
     fn to_bytes(&self) -> eyre::Result<Vec<u8>> {
         // TODO: don't use json, use our own serializer (or protobuf for now?)
-        let string = serde_json::to_string(self).map_err(|e| eyre!(e))?;
-        Ok(string.into_bytes())
+        serde_json::to_vec(self)
+            .wrap_err("failed serializing namespace data as json bytes")
     }
 }
 
