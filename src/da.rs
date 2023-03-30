@@ -1,5 +1,5 @@
 use ed25519_dalek::{ed25519::signature::Signature, Keypair, PublicKey, Signer, Verifier};
-use eyre::{WrapErr as _, bail};
+use eyre::{bail, WrapErr as _};
 use rs_cnc::{CelestiaNodeClient, NamespacedSharesResponse, PayForDataResponse};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -35,8 +35,7 @@ impl<D: NamespaceData> SignedNamespaceData<D> {
 
     fn to_bytes(&self) -> eyre::Result<Vec<u8>> {
         // TODO: don't use json, use our own serializer (or protobuf for now?)
-        serde_json::to_vec(self)
-            .wrap_err("failed serializing signed namespace data to json")
+        serde_json::to_vec(self).wrap_err("failed serializing signed namespace data to json")
     }
 
     fn from_bytes(bytes: &[u8]) -> eyre::Result<Self> {
@@ -51,7 +50,10 @@ where
 {
     fn hash(&self) -> eyre::Result<Vec<u8>> {
         let mut hasher = Sha256::new();
-        hasher.update(self.to_bytes().wrap_err("failed converting namespace data to bytes")?);
+        hasher.update(
+            self.to_bytes()
+                .wrap_err("failed converting namespace data to bytes")?,
+        );
         let hash = hasher.finalize();
         Ok(hash.to_vec())
     }
@@ -65,8 +67,7 @@ where
 
     fn to_bytes(&self) -> eyre::Result<Vec<u8>> {
         // TODO: don't use json, use our own serializer (or protobuf for now?)
-        serde_json::to_vec(self)
-            .wrap_err("failed serializing namespace data as json bytes")
+        serde_json::to_vec(self).wrap_err("failed serializing namespace data as json bytes")
     }
 }
 
@@ -103,8 +104,8 @@ impl CelestiaClient {
     /// the keypair is used to sign the data that is submitted to Celestia,
     /// specifically within submit_block.
     pub fn new(endpoint: String) -> eyre::Result<Self> {
-        let cnc = CelestiaNodeClient::new(endpoint)
-            .wrap_err("failed creating celestia node client")?;
+        let cnc =
+            CelestiaNodeClient::new(endpoint).wrap_err("failed creating celestia node client")?;
         Ok(CelestiaClient { client: cnc })
     }
 
@@ -209,7 +210,10 @@ impl CelestiaClient {
     }
 
     /// check_block_availability checks if what shares are written to a given height.
-    pub async fn check_block_availability(&self, height: u64) -> eyre::Result<NamespacedSharesResponse> {
+    pub async fn check_block_availability(
+        &self,
+        height: u64,
+    ) -> eyre::Result<NamespacedSharesResponse> {
         let resp = self
             .client
             .namespaced_shares(&DEFAULT_NAMESPACE.to_string(), height)
@@ -261,7 +265,9 @@ impl CelestiaClient {
             let mut rollup_txs_map = HashMap::new();
 
             // for each rollup namespace, retrieve the corresponding rollup data
-            'namespaces: for (height, rollup_namespace) in &sequencer_namespace_data.data.rollup_namespaces {
+            'namespaces: for (height, rollup_namespace) in
+                &sequencer_namespace_data.data.rollup_namespaces
+            {
                 let rollup_txs = self
                     .get_rollup_data_for_block(
                         &sequencer_namespace_data.data.block_hash.0,
@@ -279,12 +285,12 @@ impl CelestiaClient {
                     warn!("no rollup data found for namespace {rollup_namespace}");
                     continue 'namespaces;
                 };
-                let namespace = Namespace::from_string(rollup_namespace)
-                    .wrap_err_with(|| format!("failed constructing namespaces from rollup namespace `{rollup_namespace}`"))?;
-                rollup_txs_map.insert(
-                    namespace,
-                    rollup_txs,
-                );
+                let namespace = Namespace::from_string(rollup_namespace).wrap_err_with(|| {
+                    format!(
+                        "failed constructing namespaces from rollup namespace `{rollup_namespace}`"
+                    )
+                })?;
+                rollup_txs_map.insert(namespace, rollup_txs);
             }
 
             blocks.push(SequencerBlock {

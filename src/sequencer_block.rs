@@ -1,5 +1,5 @@
 use base64::{engine::general_purpose, Engine as _};
-use eyre::{ensure, WrapErr as _, bail};
+use eyre::{bail, ensure, WrapErr as _};
 use hex;
 use prost::{DecodeError, Message};
 use serde::{Deserialize, Serialize};
@@ -35,10 +35,7 @@ impl std::fmt::Display for Namespace {
 impl Namespace {
     pub fn from_string(s: &str) -> eyre::Result<Self> {
         let bytes = hex::decode(s).wrap_err("failed reading string as hex encoded bytes")?;
-        ensure!(
-            bytes.len() == 8,
-            "string must encode exactly 8 bytes",
-        );
+        ensure!(bytes.len() == 8, "string must encode exactly 8 bytes",);
         let mut namespace = [0u8; 8];
         namespace.copy_from_slice(&bytes);
         Ok(Namespace(namespace))
