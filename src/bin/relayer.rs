@@ -5,7 +5,7 @@ use serde::Deserialize;
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
-use std::{str::FromStr, time};
+use std::time;
 
 use sequencer_relayer::{
     base64_string::Base64String,
@@ -107,18 +107,7 @@ async fn main() {
         interval.tick().await;
         match sequencer_client.get_latest_block().await {
             Ok(resp) => {
-                let maybe_height: Result<u64, <u64 as FromStr>::Err> =
-                    resp.block.header.height.parse();
-                if let Err(e) = maybe_height {
-                    warn!(
-                        error = ?e,
-                        "got invalid block height {} from sequencer",
-                        resp.block.header.height,
-                    );
-                    continue;
-                }
-
-                let height = maybe_height.unwrap();
+                let height = resp.block.header.0.height.value();
                 if height <= highest_block_number {
                     continue;
                 }
@@ -126,10 +115,12 @@ async fn main() {
                 info!("got block with height {} from sequencer", height);
                 highest_block_number = height;
 
-                if resp.block.header.proposer_address.0 != address_bytes {
+                // TODO: check if this comparison is ok
+                if resp.block.header.0.proposer_address.as_bytes() != address_bytes {
                     let proposer_address = bech32::encode(
                         "metrovalcons",
-                        resp.block.header.proposer_address.0.to_base32(),
+                        // TODO: and also, if this conversion is ok
+                        resp.block.header.0.proposer_address.to_base32(),
                         Variant::Bech32,
                     )
                     .expect("should encode block proposer address");
