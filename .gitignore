@@ -4,3 +4,6 @@ src/proto/tx.rs
 
 # jetbrains
 .idea
+
+# macOS
+.DS_Store

@@ -2,7 +2,7 @@
 FROM rust:1.68-slim as builder
 
 # install deps needed to build our rust binary.
-# libssl-dev and pkg-config are for ssl, protobuf-compiler is required by build.rs to build or protos
+# libssl-dev and pkg-config are for ssl, protobuf-compiler is required by build.rs to build our protos
 RUN apt-get update && \
     apt-get dist-upgrade -y && \
     apt-get install -y libssl-dev pkg-config protobuf-compiler
