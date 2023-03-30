@@ -1,5 +1,5 @@
 use ed25519_dalek::{ed25519::signature::Signature, Keypair, PublicKey, Signer, Verifier};
-use eyre::{eyre, WrapErr as _};
+use eyre::{WrapErr as _, bail};
 use rs_cnc::{CelestiaNodeClient, NamespacedSharesResponse, PayForDataResponse};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -103,7 +103,8 @@ impl CelestiaClient {
     /// the keypair is used to sign the data that is submitted to Celestia,
     /// specifically within submit_block.
     pub fn new(endpoint: String) -> eyre::Result<Self> {
-        let cnc = CelestiaNodeClient::new(endpoint).map_err(|e| eyre!(e))?;
+        let cnc = CelestiaNodeClient::new(endpoint)
+            .wrap_err("failed creating celestia node client")?;
         Ok(CelestiaClient { client: cnc })
     }
 
@@ -112,9 +113,9 @@ impl CelestiaClient {
             .client
             .namespaced_data(&DEFAULT_NAMESPACE.to_string(), 0)
             .await
-            .map_err(|e| eyre!(e))?;
+            .wrap_err("failed requesting namespaced data")?;
         let Some(height) = res.height else {
-            return Err(eyre!("no height found"));
+            bail!("no height found in namespaced data received by celestia client");
         };
         Ok(height)
     }
@@ -133,7 +134,7 @@ impl CelestiaClient {
                 DEFAULT_PFD_GAS_LIMIT,
             )
             .await
-            .map_err(|e| eyre!(e))?;
+            .wrap_err("failed submitting pay for data to client")?;
         Ok(pay_for_data_response)
     }
 
@@ -159,17 +160,22 @@ impl CelestiaClient {
                 block_hash: block.block_hash.clone(),
                 rollup_txs: txs,
             };
-            let rollup_data_bytes = rollup_namespace_data.to_signed(keypair)?.to_bytes()?;
+            let rollup_data_bytes = rollup_namespace_data
+                .to_signed(keypair)
+                .wrap_err("failed signing rollup namespace data")?
+                .to_bytes()
+                .wrap_err("failed converting signed rollupdata namespace data to bytes")?;
             let resp = self
                 .submit_namespaced_data(&namespace.to_string(), &rollup_data_bytes)
-                .await?;
+                .await
+                .wrap_err("failed submitting signed rollup namespaced data")?;
 
-            if resp.height.is_none() {
-                return Err(eyre!("no height returned from pay for data"));
-            }
-
-            namespace_to_block_num.insert(namespace.to_string(), resp.height.unwrap());
-            block_height_and_namespace.push((resp.height.unwrap(), namespace.to_string()))
+            let Some(height) = resp.height else {
+                bail!("no height found in namespaced data received by celestia client");
+            };
+            let namespace = namespace.to_string();
+            namespace_to_block_num.insert(namespace.clone(), height);
+            block_height_and_namespace.push((height, namespace))
         }
 
         // then, format and submit data to the base sequencer namespace
@@ -180,16 +186,21 @@ impl CelestiaClient {
             rollup_namespaces: block_height_and_namespace,
         };
 
-        let bytes = sequencer_namespace_data.to_signed(keypair)?.to_bytes()?;
+        let bytes = sequencer_namespace_data
+            .to_signed(keypair)
+            .wrap_err("failed signing sequencer namespace data")?
+            .to_bytes()
+            .wrap_err("failed converting signed namespace data to bytes")?;
         let resp = self
             .submit_namespaced_data(&DEFAULT_NAMESPACE.to_string(), &bytes)
-            .await?;
+            .await
+            .wrap_err("failed submitting namespaced data")?;
 
         let Some(height) = resp.height else {
-            return Err(eyre!("no height returned from pay for data"));
+            bail!("no height returned from pay for data");
         };
 
-        namespace_to_block_num.insert(DEFAULT_NAMESPACE.to_string(), resp.height.unwrap());
+        namespace_to_block_num.insert(DEFAULT_NAMESPACE.to_string(), height);
 
         Ok(SubmitBlockResponse {
             height,
@@ -203,7 +214,7 @@ impl CelestiaClient {
             .client
             .namespaced_shares(&DEFAULT_NAMESPACE.to_string(), height)
             .await
-            .map_err(|e| eyre!(e))?;
+            .wrap_err("failed accessing namespaced shares")?;
         Ok(resp)
     }
 
@@ -221,7 +232,7 @@ impl CelestiaClient {
             .client
             .namespaced_data(&DEFAULT_NAMESPACE.to_string(), height)
             .await
-            .map_err(|e| eyre!(e))?;
+            .wrap_err("failed getting namespaced data")?;
 
         // retrieve all sequencer data stored at this height
         // optionally, only find data that was signed by the given public key
@@ -250,7 +261,7 @@ impl CelestiaClient {
             let mut rollup_txs_map = HashMap::new();
 
             // for each rollup namespace, retrieve the corresponding rollup data
-            for (height, rollup_namespace) in &sequencer_namespace_data.data.rollup_namespaces {
+            'namespaces: for (height, rollup_namespace) in &sequencer_namespace_data.data.rollup_namespaces {
                 let rollup_txs = self
                     .get_rollup_data_for_block(
                         &sequencer_namespace_data.data.block_hash.0,
@@ -258,16 +269,21 @@ impl CelestiaClient {
                         *height,
                         public_key,
                     )
-                    .await?;
-                if rollup_txs.is_none() {
+                    .await
+                    .wrap_err_with(|| format!(
+                        "failed getting rollup data for block at height `{height}` in rollup namespace `{rollup_namespace}`"
+                    ))?;
+                let Some(rollup_txs) = rollup_txs else {
                     // this shouldn't happen; if a sequencer block claims to have written data to some
                     // rollup namespace, it should exist
-                    warn!("no rollup data found for namespace {}", rollup_namespace);
-                    continue;
-                }
+                    warn!("no rollup data found for namespace {rollup_namespace}");
+                    continue 'namespaces;
+                };
+                let namespace = Namespace::from_string(rollup_namespace)
+                    .wrap_err_with(|| format!("failed constructing namespaces from rollup namespace `{rollup_namespace}`"))?;
                 rollup_txs_map.insert(
-                    Namespace::from_string(rollup_namespace)?,
-                    rollup_txs.unwrap(),
+                    namespace,
+                    rollup_txs,
                 );
             }
 
@@ -293,7 +309,7 @@ impl CelestiaClient {
             .client
             .namespaced_data(rollup_namespace, height)
             .await
-            .map_err(|e| eyre!(e))?;
+            .wrap_err("failed getting namespaced data")?;
 
         let datas = namespaced_data_response.data.unwrap_or_default();
         let mut rollup_datas = datas
@@ -330,9 +346,7 @@ impl CelestiaClient {
 
         // there should NOT be multiple datas with the same block hash and signer
         if rollup_datas.next().is_some() {
-            return Err(eyre!(
-                "multiple rollup datas with the same block hash and signer"
-            ));
+            bail!("multiple rollup datas with the same block hash and signer");
         }
 
         Ok(Some(rollup_data_for_block.data.rollup_txs))
