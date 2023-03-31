@@ -33,8 +33,8 @@ mod test {
         let resp = client.get_latest_block().await.unwrap();
         let data_hash = txs_to_data_hash(&resp.block.data.txs);
         assert_eq!(
-            data_hash.as_bytes(),
-            &resp.block.header.data_hash.unwrap().0
+            data_hash,
+            resp.block.header.0.data_hash.unwrap(),
         );
     }
 }

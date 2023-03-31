@@ -368,6 +368,33 @@ mod tests {
     use super::{CelestiaClient, SequencerBlock, DEFAULT_NAMESPACE};
     use crate::base64_string::Base64String;
     use crate::sequencer_block::{get_namespace, IndexedTransaction};
+    use crate::types::Header;
+
+    fn make_header() -> Header {
+        use tendermint::account;
+        use tendermint::block::{Header, Height};
+        use tendermint::block::header::Version;
+        use tendermint::chain;
+        use tendermint::AppHash;
+        use tendermint::Hash;
+        use tendermint::Time;
+        Header(Header {
+            version: Version { block: 0, app: 0, },
+            chain_id: chain::Id::try_from("astriatest-100").unwrap(),
+            height: Height::try_from(1234u64).unwrap(),
+            time: Time::now(),
+            last_block_id: None,
+            last_commit_hash: None,
+            data_hash: None,
+            validators_hash: Hash::None,
+            next_validators_hash: Hash::None,
+            consensus_hash: Hash::None,
+            app_hash: AppHash::try_from(vec![0,1,2,3,4,5]).unwrap(),
+            last_results_hash: None,
+            evidence_hash: None,
+            proposer_address: account::Id::try_from(vec![0; 20]).unwrap(),
+        })
+    }
 
     #[tokio::test]
     async fn test_get_latest_height() {
@@ -389,7 +416,7 @@ mod tests {
         let block_hash = Base64String(vec![99; 32]);
         let block = SequencerBlock {
             block_hash: block_hash.clone(),
-            header: Default::default(),
+            header: make_header(),
             sequencer_txs: vec![IndexedTransaction {
                 index: 0,
                 transaction: tx.clone(),
@@ -425,7 +452,7 @@ mod tests {
         let block_hash = Base64String(vec![99; 32]);
         let mut block = SequencerBlock {
             block_hash: block_hash.clone(),
-            header: Default::default(),
+            header: make_header(),
             sequencer_txs: vec![IndexedTransaction {
                 index: 0,
                 transaction: tx.clone(),
@@ -454,7 +481,7 @@ mod tests {
         let resp = client.get_blocks(*height, Some(&public_key)).await.unwrap();
         assert_eq!(resp.len(), 1);
         assert_eq!(resp[0].block_hash, block_hash);
-        assert_eq!(resp[0].header, Default::default());
+        assert_eq!(resp[0].header, make_header());
         assert_eq!(resp[0].sequencer_txs.len(), 1);
         assert_eq!(resp[0].sequencer_txs[0].index, 0);
         assert_eq!(resp[0].sequencer_txs[0].transaction, tx);
