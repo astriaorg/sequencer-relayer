@@ -372,14 +372,14 @@ mod tests {
 
     fn make_header() -> Header {
         use tendermint::account;
-        use tendermint::block::{Header, Height};
         use tendermint::block::header::Version;
+        use tendermint::block::{Header, Height};
         use tendermint::chain;
         use tendermint::AppHash;
         use tendermint::Hash;
         use tendermint::Time;
         Header(Header {
-            version: Version { block: 0, app: 0, },
+            version: Version { block: 0, app: 0 },
             chain_id: chain::Id::try_from("astriatest-100").unwrap(),
             height: Height::try_from(1234u64).unwrap(),
             time: Time::now(),
@@ -389,7 +389,7 @@ mod tests {
             validators_hash: Hash::None,
             next_validators_hash: Hash::None,
             consensus_hash: Hash::None,
-            app_hash: AppHash::try_from(vec![0,1,2,3,4,5]).unwrap(),
+            app_hash: AppHash::try_from(vec![0, 1, 2, 3, 4, 5]).unwrap(),
             last_results_hash: None,
             evidence_hash: None,
             proposer_address: account::Id::try_from(vec![0; 20]).unwrap(),
