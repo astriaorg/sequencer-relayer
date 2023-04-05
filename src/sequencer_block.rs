@@ -81,7 +81,7 @@ impl SequencerBlock {
     /// from_cosmos_block converts a cosmos-sdk block into a SequencerBlock.
     /// it parses the block for SequencerMsgs and namespaces them accordingly.
     pub fn from_cosmos_block(b: Block) -> eyre::Result<Self> {
-        if b.header.data_hash.is_none() {
+        if b.header.0.data_hash.is_none() {
             bail!("block has no data hash");
         }
 
@@ -124,7 +124,7 @@ impl SequencerBlock {
         }
 
         Ok(Self {
-            block_hash: Base64String(b.header.hash()?.as_bytes().to_vec()),
+            block_hash: Base64String(b.header.hash().as_bytes().to_vec()),
             header: b.header,
             sequencer_txs,
             rollup_txs,
@@ -134,7 +134,7 @@ impl SequencerBlock {
     /// verify_data_hash verifies that the merkle root of the tree consisting of all the transactions
     /// in the block matches the block's data hash.
     pub fn verify_data_hash(&self) -> eyre::Result<()> {
-        let Some(this_data_hash) = self.header.data_hash.as_ref() else {
+        let Some(this_data_hash) = self.header.0.data_hash.as_ref() else {
             bail!("block has no data hash");
         };
 
@@ -154,7 +154,7 @@ impl SequencerBlock {
         let data_hash = txs_to_data_hash(&txs);
 
         ensure!(
-            data_hash.as_bytes() == this_data_hash.0,
+            data_hash.as_bytes() == this_data_hash.as_bytes(),
             "data hash stored in block header does not match hash calculated from transactions",
         );
 
@@ -164,7 +164,7 @@ impl SequencerBlock {
     /// verify_block_hash verifies that the merkle root of the tree consisting of the block header
     /// matches the block's hash.
     pub fn verify_block_hash(&self) -> eyre::Result<()> {
-        let block_hash = self.header.hash()?;
+        let block_hash = self.header.hash();
         ensure!(
             block_hash.as_bytes() == self.block_hash.0,
             "block hash calculated from tendermint header does not match block hash stored in sequencer block",

@@ -88,7 +88,7 @@ mod test {
         let cosmos_endpoint = "http://localhost:1317".to_string();
         let client = SequencerClient::new(cosmos_endpoint).unwrap();
         let resp = client.get_latest_block().await.unwrap();
-        let height: u64 = resp.block.header.height.parse().unwrap();
+        let height: u64 = resp.block.header.0.height.value();
         client.get_block(height).await.unwrap();
     }
 }
