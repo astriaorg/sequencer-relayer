@@ -25,12 +25,17 @@ pub struct SubmitBlockResponse {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SignedNamespaceData<D> {
     pub data: D,
+    pub public_key: Base64String,
     pub signature: Base64String,
 }
 
 impl<D: NamespaceData> SignedNamespaceData<D> {
-    fn new(data: D, signature: Base64String) -> Self {
-        Self { data, signature }
+    fn new(data: D, public_key: Base64String, signature: Base64String) -> Self {
+        Self {
+            data,
+            public_key,
+            signature,
+        }
     }
 
     fn to_bytes(&self) -> eyre::Result<Vec<u8>> {
@@ -41,6 +46,21 @@ impl<D: NamespaceData> SignedNamespaceData<D> {
     fn from_bytes(bytes: &[u8]) -> eyre::Result<Self> {
         serde_json::from_slice(bytes)
             .wrap_err("failed deserializing signed namespace data from bytes")
+    }
+
+    pub fn verify(&self) -> eyre::Result<()> {
+        let public_key = PublicKey::from_bytes(&self.public_key.0)
+            .wrap_err("failed deserializing public key from bytes")?;
+        let signature = Signature::from_bytes(&self.signature.0)
+            .wrap_err("failed deserializing signature from bytes")?;
+        let data_bytes = self
+            .data
+            .hash()
+            .wrap_err("failed converting data to bytes")?;
+        public_key
+            .verify(&data_bytes, &signature)
+            .wrap_err("failed verifying signature")?;
+        Ok(())
     }
 }
 
@@ -61,7 +81,11 @@ where
     fn to_signed(self, keypair: &Keypair) -> eyre::Result<SignedNamespaceData<Self>> {
         let hash = self.hash().wrap_err("failed hashing namespace data")?;
         let signature = Base64String(keypair.sign(&hash).as_bytes().to_vec());
-        let data = SignedNamespaceData::new(self, signature);
+        let data = SignedNamespaceData::new(
+            self,
+            Base64String(keypair.public.to_bytes().to_vec()),
+            signature,
+        );
         Ok(data)
     }
 
