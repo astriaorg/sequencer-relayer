@@ -24,8 +24,8 @@ pub struct SubmitBlockResponse {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SignedNamespaceData<D> {
-    data: D,
-    signature: Base64String,
+    pub data: D,
+    pub signature: Base64String,
 }
 
 impl<D: NamespaceData> SignedNamespaceData<D> {
@@ -76,11 +76,11 @@ where
 /// also written to in the same block.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SequencerNamespaceData {
-    block_hash: Base64String,
-    header: Header,
-    sequencer_txs: Vec<IndexedTransaction>,
+    pub block_hash: Base64String,
+    pub header: Header,
+    pub sequencer_txs: Vec<IndexedTransaction>,
     /// vector of (block height, namespace) tuples
-    rollup_namespaces: Vec<(u64, String)>,
+    pub rollup_namespaces: Vec<(u64, String)>,
 }
 
 impl NamespaceData for SequencerNamespaceData {}
@@ -88,8 +88,8 @@ impl NamespaceData for SequencerNamespaceData {}
 /// RollupNamespaceData represents the data written to a rollup namespace.
 #[derive(Serialize, Deserialize, Debug)]
 struct RollupNamespaceData {
-    block_hash: Base64String,
-    rollup_txs: Vec<IndexedTransaction>,
+    pub block_hash: Base64String,
+    pub rollup_txs: Vec<IndexedTransaction>,
 }
 
 impl NamespaceData for RollupNamespaceData {}
