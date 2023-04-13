@@ -1,6 +1,6 @@
 name: Build and Publish Docker image
 
-# Trigger on pushes to astria branch, new semantic version tags, and pull request updates
+# Trigger on pushes to master branch, new semantic version tags, and pull request updates
 on:
   workflow_dispatch:
   push:
