@@ -27,7 +27,6 @@ clap = { version = "4.1.9", features = ["derive"] }
 
 [dependencies.rs-cnc]
 git = "https://github.com/astriaorg/rs-cnc.git"
-branch = "superfluffy/rustls-feature"
 default-features = false
 features = ["rustls"]
 
