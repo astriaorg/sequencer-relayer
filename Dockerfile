@@ -25,27 +25,24 @@ FROM chef as builder
 COPY --from=planner /build/recipe.json recipe.json
 ARG TARGETPLATFORM
 
-# FIXME: Merge this case statement and the one below into a build script
 ARG TARGETPLATFORM
 RUN case "$TARGETPLATFORM" in \
     "linux/arm64") target="aarch64-unknown-linux-gnu" ;; \
     "linux/amd64") target="x86_64-unknown-linux-gnu" ;; \
     esac \
+    && printf "$target" > target_triple \
     && rustup target add "$target" \
     && cargo chef cook --zigbuild \
     --release \
     --target "$target" \
-    --target-dir target/release \
     --recipe-path recipe.json
 COPY . .
-RUN case "$TARGETPLATFORM" in \
-    "linux/arm64") target="aarch64-unknown-linux-gnu" ;; \
-    "linux/amd64") target="x86_64-unknown-linux-gnu" ;; \
-    esac \
-    && cargo zigbuild --release \
-    --target "$target" \
-    --target-dir target/release \
+RUN cargo zigbuild --release \
+    --target $(cat ./target_triple) \
     --bin relayer
+# replace this with `--out` or `--out-dir` once stable
+RUN mkdir -p target/release \
+    && cp target/$(cat ./target_triple)/release/relayer target/release/
 
 FROM gcr.io/distroless/cc
 WORKDIR /app/
