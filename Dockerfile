@@ -23,7 +23,6 @@ RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef as builder
 COPY --from=planner /build/recipe.json recipe.json
-ARG TARGETPLATFORM
 
 ARG TARGETPLATFORM
 RUN case "$TARGETPLATFORM" in \
