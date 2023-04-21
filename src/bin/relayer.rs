@@ -1,18 +1,16 @@
-use bech32::{self, ToBase32, Variant};
 use clap::Parser;
 use dirs::home_dir;
-use serde::Deserialize;
-use tracing::{info, warn};
+use parking_lot::Mutex;
+use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-use std::{str::FromStr, time};
+use std::time;
 
 use sequencer_relayer::{
-    base64_string::Base64String,
     da::CelestiaClient,
-    keys::{private_key_bytes_to_keypair, validator_hex_to_address},
+    relayer::{Relayer, ValidatorPrivateKeyFile},
     sequencer::SequencerClient,
-    sequencer_block::SequencerBlock,
+    server::RpcServer,
 };
 
 pub const DEFAULT_SEQUENCER_ENDPOINT: &str = "http://localhost:1317";
@@ -39,25 +37,16 @@ struct Args {
     #[arg(short, long, default_value = ".metro/config/priv_validator_key.json")]
     validator_key_file: String,
 
+    /// RPC port to listen on. Default: 2450
+    #[arg(short, long, default_value = "2450")]
+    rpc_port: u16,
+
     /// Log level. One of debug, info, warn, or error
     #[arg(short, long, default_value = "info")]
     log: String,
 }
 
-#[derive(Deserialize)]
-pub struct ValidatorPrivateKeyFile {
-    pub address: String,
-    pub pub_key: KeyWithType,
-    pub priv_key: KeyWithType,
-}
-
-#[derive(Deserialize)]
-pub struct KeyWithType {
-    #[serde(rename = "type")]
-    pub key_type: String,
-    pub value: String,
-}
-
+#[allow(clippy::await_holding_lock)]
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
@@ -78,22 +67,6 @@ async fn main() {
     let key_file: ValidatorPrivateKeyFile =
         serde_json::from_str(&key_file).expect("failed to unmarshal validator key file");
 
-    // generate our private-public keypair
-    let keypair = private_key_bytes_to_keypair(
-        &Base64String::from_string(key_file.priv_key.value)
-            .expect("failed to decode validator private key; must be base64 string")
-            .0,
-    )
-    .expect("failed to convert validator private key to keypair");
-
-    // generate our bech32 validator address
-    let address = validator_hex_to_address(&key_file.address)
-        .expect("failed to convert validator address to bech32");
-
-    // generate our validator address bytes
-    let address_bytes = hex::decode(&key_file.address)
-        .expect("failed to decode validator address; must be hex string");
-
     let sequencer_client =
         SequencerClient::new(args.sequencer_endpoint).expect("failed to create sequencer client");
     let da_client = CelestiaClient::new(args.celestia_endpoint)
@@ -101,65 +74,19 @@ async fn main() {
 
     let sleep_duration = time::Duration::from_millis(args.block_time);
     let mut interval = tokio::time::interval(sleep_duration);
-    let mut highest_block_number = 0u64;
+
+    let state = std::sync::Arc::new(Mutex::new(Relayer::new(
+        sequencer_client,
+        da_client,
+        key_file,
+    )));
+
+    let _rpc_server = RpcServer::new("127.0.0.1", args.rpc_port, Relayer::health, state.clone())
+        .await
+        .expect("failed to start RPC server");
 
     loop {
         interval.tick().await;
-        match sequencer_client.get_latest_block().await {
-            Ok(resp) => {
-                let maybe_height: Result<u64, <u64 as FromStr>::Err> =
-                    resp.block.header.height.parse();
-                if let Err(e) = maybe_height {
-                    warn!(
-                        error = ?e,
-                        "got invalid block height {} from sequencer",
-                        resp.block.header.height,
-                    );
-                    continue;
-                }
-
-                let height = maybe_height.unwrap();
-                if height <= highest_block_number {
-                    continue;
-                }
-
-                info!("got block with height {} from sequencer", height);
-                highest_block_number = height;
-
-                if resp.block.header.proposer_address.0 != address_bytes {
-                    let proposer_address = bech32::encode(
-                        "metrovalcons",
-                        resp.block.header.proposer_address.0.to_base32(),
-                        Variant::Bech32,
-                    )
-                    .expect("should encode block proposer address");
-                    info!(
-                        %proposer_address,
-                        validator_address = %address,
-                        "ignoring block: proposer address is not ours",
-                    );
-                    continue;
-                }
-
-                let sequencer_block = match SequencerBlock::from_cosmos_block(resp.block) {
-                    Ok(block) => block,
-                    Err(e) => {
-                        warn!(error = ?e, "failed to convert block to DA block");
-                        continue;
-                    }
-                };
-
-                let tx_count =
-                    sequencer_block.rollup_txs.len() + sequencer_block.sequencer_txs.len();
-                match da_client.submit_block(sequencer_block, &keypair).await {
-                    Ok(resp) => info!(
-                        "submitted sequencer block {} to DA layer (included in block {}): tx count={}",
-                        height, resp.height, &tx_count,
-                    ),
-                    Err(e) => warn!(error = ?e, "failed to submit block to DA layer"),
-                }
-            }
-            Err(e) => warn!(error = ?e, "failed to get latest block from sequencer"),
-        }
+        state.lock().run().await;
     }
 }

@@ -14,6 +14,8 @@ eyre = "0.6"
 hex = "0.4"
 jsonrpsee-core = "0.17"
 jsonrpsee-server = "0.17"
+jsonrpsee-types = "0.17"
+parking_lot = "0.12"
 prost = "0.11"
 prost-types = "0.11"
 rand = { version = "0.7", features = [ "getrandom" ] }
