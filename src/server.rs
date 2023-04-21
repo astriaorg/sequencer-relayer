@@ -31,7 +31,7 @@ impl RpcServer {
     pub async fn new(
         listen_addr: &str,
         listen_port: u16,
-        health_fn: HealthFn, // impl Fn() -> (u64, u64) + Send + Sync + 'static,
+        health_fn: HealthFn,
         state: Arc<Mutex<Relayer>>,
     ) -> eyre::Result<RpcServer> {
         let addrs: &[std::net::SocketAddr] =

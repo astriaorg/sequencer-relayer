@@ -75,18 +75,18 @@ async fn main() {
     let sleep_duration = time::Duration::from_millis(args.block_time);
     let mut interval = tokio::time::interval(sleep_duration);
 
-    let state = std::sync::Arc::new(Mutex::new(Relayer::new(
+    let relayer = std::sync::Arc::new(Mutex::new(Relayer::new(
         sequencer_client,
         da_client,
         key_file,
     )));
 
-    let _rpc_server = RpcServer::new("127.0.0.1", args.rpc_port, Relayer::health, state.clone())
+    let _rpc_server = RpcServer::new("127.0.0.1", args.rpc_port, Relayer::health, relayer.clone())
         .await
         .expect("failed to start RPC server");
 
     loop {
         interval.tick().await;
-        state.lock().run().await;
+        relayer.lock().run().await;
     }
 }
