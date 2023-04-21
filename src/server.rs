@@ -32,7 +32,7 @@ impl RpcServer {
         listen_addr: &str,
         listen_port: u16,
         health_fn: HealthFn,
-        state: Arc<Mutex<Relayer>>,
+        relayer: Arc<Mutex<Relayer>>,
     ) -> eyre::Result<RpcServer> {
         let addrs: &[std::net::SocketAddr] =
             &[format!("{}:{}", listen_addr, listen_port).parse().unwrap()];
@@ -44,7 +44,7 @@ impl RpcServer {
 
         let mut module = RpcModule::new(());
         module.register_method::<RpcResult<HealthResponse>, _>("system_health", move |_, _| {
-            let (curr_sequencer_height, curr_da_height) = health_fn(&state.lock());
+            let (curr_sequencer_height, curr_da_height) = health_fn(&relayer.lock());
             Ok(HealthResponse {
                 curr_sequencer_height,
                 curr_da_height,
