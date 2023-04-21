@@ -12,6 +12,8 @@ dirs = "5.0"
 ed25519-dalek = "1.0"
 eyre = "0.6"
 hex = "0.4"
+jsonrpsee-core = "0.17"
+jsonrpsee-server = "0.17"
 prost = "0.11"
 prost-types = "0.11"
 rand = { version = "0.7", features = [ "getrandom" ] }

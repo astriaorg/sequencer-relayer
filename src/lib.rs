@@ -3,6 +3,7 @@ pub mod da;
 pub mod keys;
 pub mod sequencer;
 pub mod sequencer_block;
+pub mod server;
 pub mod transaction;
 pub mod types;
 
