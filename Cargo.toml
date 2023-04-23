@@ -6,16 +6,14 @@ license = "MIT OR Apache-2.0"
 rust-version = "1.65"
 
 [dependencies]
+axum = "0.6"
 base64 = "0.21"
 bech32 = "0.9"
 dirs = "5.0"
 ed25519-dalek = "1.0"
 eyre = "0.6"
 hex = "0.4"
-jsonrpsee-core = "0.17"
-jsonrpsee-server = "0.17"
-jsonrpsee-types = "0.17"
-parking_lot = "0.12"
+hyper = "0.14"
 prost = "0.11"
 prost-types = "0.11"
 rand = { version = "0.7", features = [ "getrandom" ] }

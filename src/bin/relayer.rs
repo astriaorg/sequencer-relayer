@@ -1,6 +1,5 @@
 use clap::Parser;
 use dirs::home_dir;
-use parking_lot::Mutex;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
@@ -10,7 +9,7 @@ use sequencer_relayer::{
     da::CelestiaClient,
     relayer::{Relayer, ValidatorPrivateKeyFile},
     sequencer::SequencerClient,
-    server::RpcServer,
+    server,
 };
 
 pub const DEFAULT_SEQUENCER_ENDPOINT: &str = "http://localhost:1317";
@@ -75,18 +74,19 @@ async fn main() {
     let sleep_duration = time::Duration::from_millis(args.block_time);
     let mut interval = tokio::time::interval(sleep_duration);
 
-    let relayer = std::sync::Arc::new(Mutex::new(Relayer::new(
-        sequencer_client,
-        da_client,
-        key_file,
-    )));
+    let mut relayer = Relayer::new(sequencer_client, da_client, key_file);
+    let state = relayer.get_state();
 
-    let _rpc_server = RpcServer::new("127.0.0.1", args.rpc_port, Relayer::health, relayer.clone())
-        .await
-        .expect("failed to start RPC server");
+    tokio::task::spawn(async move {
+        info!("starting RPC server on port {}", args.rpc_port);
+        server::start("127.0.0.1", args.rpc_port, state)
+            .await
+            .expect("failed to start RPC server");
+        info!("started RPC server on port {}", args.rpc_port);
+    });
 
     loop {
         interval.tick().await;
-        relayer.lock().run().await;
+        relayer.run().await;
     }
 }

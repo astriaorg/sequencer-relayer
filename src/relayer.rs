@@ -1,6 +1,8 @@
 use bech32::{self, ToBase32, Variant};
 use serde::Deserialize;
 use std::str::FromStr;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use tracing::{info, warn};
 
 use crate::base64_string::Base64String;
@@ -30,8 +32,13 @@ pub struct Relayer {
     validator_address: String,
     validator_address_bytes: Vec<u8>,
 
-    curr_sequencer_height: u64,
-    curr_da_height: u64,
+    state: Arc<Mutex<State>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct State {
+    pub curr_sequencer_height: u64,
+    pub curr_da_height: u64,
 }
 
 impl Relayer {
@@ -62,16 +69,20 @@ impl Relayer {
             keypair,
             validator_address,
             validator_address_bytes,
-            curr_sequencer_height: 0,
-            curr_da_height: 0,
+            state: Arc::new(Mutex::new(State {
+                curr_sequencer_height: 0,
+                curr_da_height: 0,
+            })),
         }
     }
 
-    pub fn health(&self) -> (u64, u64) {
-        (self.curr_sequencer_height, self.curr_da_height)
+    pub fn get_state(&self) -> Arc<Mutex<State>> {
+        self.state.clone()
     }
 
     pub async fn run(&mut self) {
+        let mut state = self.state.lock().await;
+
         match self.sequencer_client.get_latest_block().await {
             Ok(resp) => {
                 let maybe_height: Result<u64, <u64 as FromStr>::Err> =
@@ -86,12 +97,12 @@ impl Relayer {
                 }
 
                 let height = maybe_height.unwrap();
-                if height <= self.curr_sequencer_height {
+                if height <= state.curr_sequencer_height {
                     return;
                 }
 
                 info!("got block with height {} from sequencer", height);
-                self.curr_sequencer_height = height;
+                state.curr_sequencer_height = height;
 
                 if resp.block.header.proposer_address.0 != self.validator_address_bytes {
                     let proposer_address = bech32::encode(
@@ -124,7 +135,7 @@ impl Relayer {
                     .await
                 {
                     Ok(resp) => {
-                        self.curr_da_height = resp.height;
+                        state.curr_da_height = resp.height;
                         info!(
                             "submitted sequencer block {} to DA layer (included in block {}): tx count={}",
                             height, resp.height, &tx_count,
