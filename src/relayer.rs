@@ -80,7 +80,7 @@ impl Relayer {
         self.state.clone()
     }
 
-    pub async fn run(&mut self) {
+    pub async fn run(&self) {
         let mut state = self.state.lock().await;
 
         match self.sequencer_client.get_latest_block().await {
