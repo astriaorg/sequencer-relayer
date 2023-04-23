@@ -1737,7 +1737,6 @@ dependencies = [
  "eyre",
  "hex",
  "home",
- "hyper",
  "once_cell",
  "podman-api",
  "prost",
