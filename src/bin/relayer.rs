@@ -78,7 +78,6 @@ async fn main() {
     let state = relayer.get_state();
 
     tokio::task::spawn(async move {
-        info!("starting RPC server on port {}", args.rpc_port);
         server::start("127.0.0.1", args.rpc_port, state)
             .await
             .expect("failed to start RPC server");
