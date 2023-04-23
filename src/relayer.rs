@@ -37,8 +37,8 @@ pub struct Relayer {
 
 #[derive(Clone, Debug)]
 pub struct State {
-    pub curr_sequencer_height: u64,
-    pub curr_da_height: u64,
+    pub curr_sequencer_height: Option<u64>,
+    pub curr_da_height: Option<u64>,
 }
 
 impl Relayer {
@@ -70,8 +70,8 @@ impl Relayer {
             validator_address,
             validator_address_bytes,
             state: Arc::new(Mutex::new(State {
-                curr_sequencer_height: 0,
-                curr_da_height: 0,
+                curr_sequencer_height: None,
+                curr_da_height: None,
             })),
         }
     }
@@ -97,12 +97,13 @@ impl Relayer {
                 }
 
                 let height = maybe_height.unwrap();
-                if height <= state.curr_sequencer_height {
+                let curr_sequencer_height = state.curr_sequencer_height.unwrap_or(0);
+                if height <= curr_sequencer_height {
                     return;
                 }
 
                 info!("got block with height {} from sequencer", height);
-                state.curr_sequencer_height = height;
+                state.curr_sequencer_height = Some(height);
 
                 if resp.block.header.proposer_address.0 != self.validator_address_bytes {
                     let proposer_address = bech32::encode(
@@ -135,11 +136,13 @@ impl Relayer {
                     .await
                 {
                     Ok(resp) => {
-                        state.curr_da_height = resp.height;
+                        state.curr_da_height = Some(resp.height);
                         info!(
-                            "submitted sequencer block {} to DA layer (included in block {}): tx count={}",
-                            height, resp.height, &tx_count,
-                        )
+                            sequencer_block = height,
+                            da_layer_block = resp.height,
+                            tx_count,
+                            "submitted sequencer block to DA layer",
+                        );
                     }
                     Err(e) => warn!(error = ?e, "failed to submit block to DA layer"),
                 }
