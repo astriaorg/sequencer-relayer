@@ -49,6 +49,10 @@ jobs:
         run:  kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/docs/examples/http-svc.yaml
       - name: prepull all images required for rust testing
         run: kubectl apply -f templates/sequencer_relayer_stack_prepull.yaml
+      - name: fix internal error when deploying ingress
+        run: |
+          echo "see for more info: https://stackoverflow.com/questions/61616203/nginx-ingress-controller-failed-calling-webhook"
+          kubectl delete -A ValidatingWebhookConfiguration ingress-nginx-admission
       - name: deploy the ingress object
         run: kubectl apply -f templates/sequencer_relayer_stack_ingress.yaml
       - name: test hitting the echo service backend
