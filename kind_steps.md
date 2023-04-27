@@ -54,7 +54,7 @@ This does not yet contain any rules (since there aren't any):
 
 ```sh
 $ kubectl apply -f \
-    templates/sequencer_relayer_stack_ingress_reduced.yaml
+    templates/sequencer_relayer_stack_ingress.yaml
 ```
 
 # deploying a sequencer-relayer-stack

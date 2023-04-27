@@ -43,7 +43,18 @@ jobs:
           config: containers/kind-cluster-config.yaml
           cluster_name: test-kind
           kubectl_version: v1.27.1
-      - run: kubectl config current-context
+      - name: deploy ingress nginx as ingress provider
+        run: kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
+      - name: deploy http echo service
+        run:  kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/docs/examples/http-svc.yaml
+      - name: prepull all images required for rust testing
+        run: kubectl apply -f templates/sequencer_relayer_stack_prepull.yaml
+      - name: deploy the ingress object
+        run: kubectl apply -f templates/sequencer_relayer_stack_ingress.yaml
+      - name: test hitting the echo service backend
+        run: |
+          sudo apt-get install -y curl
+          curl localhost/hello
       # - name: Test
       #   uses: actions-rs/cargo@v1
       #   with:
