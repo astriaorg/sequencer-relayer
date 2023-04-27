@@ -55,6 +55,8 @@ jobs:
           kubectl delete -A ValidatingWebhookConfiguration ingress-nginx-admission
       - name: deploy the ingress object
         run: kubectl apply -f templates/sequencer_relayer_stack_ingress.yaml
+      - name: test ingress status
+        run: kubectl describe ingresses.networking.k8s.io sequencer-relayer-ingress
       - name: test hitting the echo service backend
         run: |
           sudo apt-get install -y curl
