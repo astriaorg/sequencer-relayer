@@ -10,10 +10,6 @@ jobs:
         go-version: [ 1.19.x ]
     runs-on: ubuntu-latest
     steps:
-      - name: Install Go
-        uses: actions/setup-go@v3
-        with:
-          go-version: ${{ matrix.go-version }}
       - uses: actions/checkout@v2
       - name: Install stable
         run: rustup toolchain install stable
@@ -49,14 +45,14 @@ jobs:
         run:  kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/docs/examples/http-svc.yaml
       - name: prepull all images required for rust testing
         run: kubectl apply -f templates/sequencer_relayer_stack_prepull.yaml
-      - name: wait for the ingress controller to become available
+      - name: wait for the ingress controller to come online
         run: kubectl wait --namespace ingress-nginx --for=condition=ready pod --selector=app.kubernetes.io/component=controller --timeout=600s
       - name: deploy the ingress object
         run: kubectl apply -f templates/sequencer_relayer_stack_ingress.yaml
-      - name: show ingress status
-        run: kubectl describe ingresses.networking.k8s.io sequencer-relayer-ingress
-      - name: show echo server status
-        run: kubectl describe pods --selector=app=http-svc
+      - name: wait for prepull to complete
+        run: kubectl wait --for=condition=ready pod --selector=name=sequencer-relayer-stack-prepuller --timeout=600s
+      - name: wait for echo service to come online
+        run: kubectl wait --for=condition=ready pod --selector=app=http-svc
       - name: test hitting the echo service backend
         run: |
           sudo apt-get install -y curl
