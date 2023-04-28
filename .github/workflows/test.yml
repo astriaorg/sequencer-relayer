@@ -51,18 +51,16 @@ jobs:
         run: kubectl apply -f templates/sequencer_relayer_stack_prepull.yaml
       - name: wait for the ingress controller to become available
         run: kubectl wait --namespace ingress-nginx --for=condition=ready pod --selector=app.kubernetes.io/component=controller --timeout=600s
-      # - name: fix internal error when deploying ingress
-      #   run: |
-      #     echo "see for more info: https://stackoverflow.com/questions/61616203/nginx-ingress-controller-failed-calling-webhook"
-      #     kubectl delete -A ValidatingWebhookConfiguration ingress-nginx-admission
       - name: deploy the ingress object
         run: kubectl apply -f templates/sequencer_relayer_stack_ingress.yaml
-      - name: test ingress status
+      - name: show ingress status
         run: kubectl describe ingresses.networking.k8s.io sequencer-relayer-ingress
+      - name: show echo server status
+        run: kubectl describe pods --selector=app=http-svc
       - name: test hitting the echo service backend
         run: |
           sudo apt-get install -y curl
-          curl localhost/hello
+          curl 127.0.0.1/hello
       # - name: Test
       #   uses: actions-rs/cargo@v1
       #   with:
