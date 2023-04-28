@@ -20,7 +20,7 @@ $ sudo pacman -S kubectl
 $ kind create cluster --config containers/kind-cluster-config.yaml
 $ kind get clusters
 test-kind
-$ kubectl config current-contetx
+$ kubectl config current-context
 kind-test-kind
 ```
 
@@ -28,15 +28,66 @@ kind-test-kind
 
 To route requests to the correct services, and to define a
 default backend to be used when we don't yet have ingress rules
-(these will be patched in when running tests):
-
+(these will be patched in later when running tests):
 ```sh
 $ kubectl apply -f \
 	https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
 $ kubectl apply -f \
 	https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/docs/examples/http-svc.yaml
 ```
+Note that these are deployed to the `ingress-nginx` namespace (which you
+can see when reading the yaml files in the URL above):
+```sh
+$ kubectl get namespaces
+NAME                 STATUS   AGE
+default              Active   7m56s
+kube-node-lease      Active   7m58s
+kube-public          Active   7m58s
+kube-system          Active   7m58s
+local-path-storage   Active   7m53s
+ingress-nginx        Active   1m12s
+````
+It takes a while for nginx to be deployed and become available.
+Kubectl offers a way to wait for that:
+```sh
+# This lists all pods that were deployed as part of the previous transition
+$ kubectl get pod -n ingress-nginx
+NAME                                        READY   STATUS      RESTARTS   AGE
+ingress-nginx-admission-create-gmx58        0/1     Completed   0          2d3h
+ingress-nginx-admission-patch-hjh2j         0/1     Completed   0          2d3h
+ingress-nginx-controller-6bdf7bdbdd-fw2pm   1/1     Running     0          2d3h
 
+# The last one is the actual controller hat we are interested in
+$ kubectl describe -n ingress-nginx pod ingress-nginx-controller-6bdf7bdbdd-fw2pm
+Name:             ingress-nginx-controller-6bdf7bdbdd-fw2pm
+Namespace:        ingress-nginx
+Priority:         0
+Service Account:  ingress-nginx
+Node:             test-kind-control-plane/172.18.0.2
+Start Time:       Tue, 25 Apr 2023 14:46:56 +0200
+Labels:           app.kubernetes.io/component=controller
+                  app.kubernetes.io/instance=ingress-nginx
+                  app.kubernetes.io/name=ingress-nginx
+                  app.kubernetes.io/part-of=ingress-nginx
+                  app.kubernetes.io/version=1.7.0
+                  pod-template-hash=6bdf7bdbdd
+<snip>
+Conditions:
+  Type              Status
+  Initialized       True
+  Ready             True
+  ContainersReady   True
+  PodScheduled      True
+<snip>
+
+# wait for up to 10 minutes for the ingress controller to become available
+$ kubectl wait \
+  --namespace ingress-nginx \
+  --for=condition=ready \
+  pod \
+  --selector=app.kubernetes.io/component=controller \
+  --timeout=600s
+```
 ## pre-pull the images required to run the stack
 
 This is called the single-use DaemonSet pattern:
