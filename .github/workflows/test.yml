@@ -55,8 +55,7 @@ jobs:
         run: kubectl wait --for=condition=ready pod --selector=app=http-svc
       - name: test hitting the echo service backend
         run: |
-          sudo apt-get install -y curl
-          sleep 2
+          sleep 5
           curl localhost/hello
       # - name: Test
       #   uses: actions-rs/cargo@v1
