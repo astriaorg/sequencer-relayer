@@ -56,7 +56,8 @@ jobs:
       - name: test hitting the echo service backend
         run: |
           sudo apt-get install -y curl
-          curl 127.0.0.1/hello
+          sleep 2
+          curl localhost/hello
       # - name: Test
       #   uses: actions-rs/cargo@v1
       #   with:
