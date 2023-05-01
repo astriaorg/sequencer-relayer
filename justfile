@@ -23,7 +23,7 @@ hit-sequencer:
   curl http://test.localdev.me/sequencer/cosmos/base/tendermint/v1beta1/blocks/latest
 
 wait-for-ingress-controller:
-  kubectl wait --namespace --for=condition=ready pod --selector=app.kubernetes.io/component=controller --timeout=600s
+  kubectl wait --namespace ingress-nginx --for=condition=ready pod --selector=app.kubernetes.io/component=controller --timeout=600s
 
 wait-for-prepull:
   kubectl wait --for=condition=ready pod --selector=name=sequencer-relayer-environment-prepull --timeout=600s
