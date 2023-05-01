@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sequencer-relayer-environment-ingress
+spec:
+  rules: 
+  - host: {{namespace}}.localdev.me
+    http:
+      paths:
+        - pathType: Prefix
+          path: "/sequencer"
+          backend:
+            service:
+              name: sequencer-relayer-environment-service
+              port:
+                number: 1318
+        - pathType: Prefix
+          path: "/bridge"
+          backend:
+            service:
+              name: sequencer-relayer-environment-service
+              port:
+                number: 26659
+---

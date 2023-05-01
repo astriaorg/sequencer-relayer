@@ -36,27 +36,14 @@ jobs:
         uses: helm/kind-action@v1.5.0
         with:
           version: v0.18.0
-          config: containers/kind-cluster-config.yaml
-          cluster_name: test-kind
+          config: test_environment/cluster-config.yml
           kubectl_version: v1.27.1
-      - name: deploy ingress nginx as ingress provider
-        run: kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
-      - name: deploy http echo service
-        run:  kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/docs/examples/http-svc.yaml
-      - name: prepull all images required for rust testing
-        run: kubectl apply -f templates/sequencer_relayer_stack_prepull.yaml
-      - name: wait for the ingress controller to come online
-        run: kubectl wait --namespace ingress-nginx --for=condition=ready pod --selector=app.kubernetes.io/component=controller --timeout=600s
-      - name: deploy the ingress object
-        run: kubectl apply -f templates/sequencer_relayer_stack_ingress.yaml
-      - name: wait for prepull to complete
-        run: kubectl wait --for=condition=ready pod --selector=name=sequencer-relayer-stack-prepuller --timeout=600s
-      - name: wait for echo service to come online
-        run: kubectl wait --for=condition=ready pod --selector=app=http-svc
-      - name: test hitting the echo service backend
-        run: |
-          sleep 5
-          curl localhost/hello
+      - name: install just
+        uses: taiki-e/installation-action@just
+      - run: just deploy-ingress-controller
+      - run: just perform-prepull
+      - run: just wait-for-ingress-controller
+      - run: just wait-for-prepull
       # - name: Test
       #   uses: actions-rs/cargo@v1
       #   with:
