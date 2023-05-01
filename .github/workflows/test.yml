@@ -39,7 +39,7 @@ jobs:
           config: test_environment/cluster-config.yml
           kubectl_version: v1.27.1
       - name: install just
-        uses: taiki-e/installation-action@just
+        uses: taiki-e/install-action@just
       - run: just deploy-ingress-controller
       - run: just perform-prepull
       - run: just wait-for-ingress-controller
