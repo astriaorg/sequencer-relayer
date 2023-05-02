@@ -1,4 +1,5 @@
 use bech32::{self, ToBase32, Variant};
+use eyre::Result;
 use serde::Deserialize;
 use std::str::FromStr;
 use tokio::sync::watch;
@@ -7,6 +8,7 @@ use tracing::{info, warn};
 use crate::base64_string::Base64String;
 use crate::da::CelestiaClient;
 use crate::keys::{private_key_bytes_to_keypair, validator_hex_to_address};
+use crate::network::GossipNetwork;
 use crate::sequencer::SequencerClient;
 use crate::sequencer_block::SequencerBlock;
 
@@ -30,6 +32,7 @@ pub struct Relayer {
     keypair: ed25519_dalek::Keypair,
     validator_address: String,
     validator_address_bytes: Vec<u8>,
+    network: GossipNetwork,
 
     state: watch::Sender<State>,
 }
@@ -51,7 +54,7 @@ impl Relayer {
         sequencer_client: SequencerClient,
         da_client: CelestiaClient,
         key_file: ValidatorPrivateKeyFile,
-    ) -> Self {
+    ) -> Result<Self> {
         // generate our private-public keypair
         let keypair = private_key_bytes_to_keypair(
             &Base64String::from_string(key_file.priv_key.value)
@@ -70,21 +73,22 @@ impl Relayer {
 
         let (state, _) = watch::channel(State::default());
 
-        Self {
+        Ok(Self {
             sequencer_client,
             da_client,
             keypair,
             validator_address,
             validator_address_bytes,
+            network: GossipNetwork::new()?,
             state,
-        }
+        })
     }
 
     pub fn subscribe_to_state(&self) -> watch::Receiver<State> {
         self.state.subscribe()
     }
 
-    async fn get_latest_block(&self) -> eyre::Result<State> {
+    async fn get_and_submit_latest_block(&mut self) -> eyre::Result<State> {
         let mut new_state = (*self.state.borrow()).clone();
         let resp = self.sequencer_client.get_latest_block().await?;
 
@@ -129,6 +133,8 @@ impl Relayer {
             }
         };
 
+        self.network.publish(&sequencer_block).await?;
+
         let tx_count = sequencer_block.rollup_txs.len() + sequencer_block.sequencer_txs.len();
         match self
             .da_client
@@ -151,8 +157,8 @@ impl Relayer {
         Ok(new_state)
     }
 
-    pub async fn run(&self) {
-        match self.get_latest_block().await {
+    pub async fn run(&mut self) {
+        match self.get_and_submit_latest_block().await {
             Err(e) => warn!(error = ?e, "failed to get latest block from sequencer"),
             Ok(new_state) if new_state != *self.state.borrow() => {
                 _ = self.state.send_replace(new_state);

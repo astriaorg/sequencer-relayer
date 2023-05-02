@@ -73,7 +73,8 @@ async fn main() {
     let sleep_duration = time::Duration::from_millis(args.block_time);
     let mut interval = tokio::time::interval(sleep_duration);
 
-    let relayer = Relayer::new(sequencer_client, da_client, key_file);
+    let mut relayer =
+        Relayer::new(sequencer_client, da_client, key_file).expect("failed to create relayer");
     let relayer_state = relayer.subscribe_to_state();
 
     let _api_server_task = tokio::task::spawn(async move {
