@@ -1,7 +1,7 @@
 default:
   @just --list
 
-setup-cluster:
+create-cluster:
   kind create cluster --config ./test_environment/cluster-config.yml
 
 delete-cluster:
@@ -27,3 +27,6 @@ wait-for-ingress-controller:
 
 wait-for-prepull:
   kubectl wait --for=condition=ready pod --selector=name=sequencer-relayer-environment-prepull --timeout=600s
+
+kustomize:
+  kubectl kustomize ./test_environment -o ./test_environment/test-environment.yml

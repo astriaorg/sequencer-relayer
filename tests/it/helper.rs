@@ -1,33 +1,34 @@
-use std::{
-    sync::atomic::{AtomicU16, Ordering},
-    time::Duration,
-};
-
-use askama::Template;
+use k8s_openapi::api::{core::v1::Namespace, apps::v1::Deployment};
+use kube::{api::{DynamicObject, PatchParams, Patch, PostParams},
+discovery::{ApiCapabilities, ApiResource, Scope},
+Client, Api, Discovery, core::{GroupVersionKind, ObjectMeta}, runtime::wait::{await_condition, conditions, Condition}, ResourceExt};
 use once_cell::sync::Lazy;
-use podman_api::{Id, Podman};
 use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
-static HOST_PORT: AtomicU16 = AtomicU16::new(1024);
+const TEST_ENVIRONMENT_YAML: &'static str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/test_environment/test-environment.yml"));
+
+const TEST_INGRESS_TEMPLATE: &'static str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/test_environment/ingress.yml.j2"));
 
 static STOP_POD_TX: Lazy<UnboundedSender<String>> = Lazy::new(|| {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     let _ = std::thread::spawn(move || {
-        let podman = init_environment();
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_io()
             .build()
             .unwrap();
         rt.block_on(async move {
-            while let Some(pod_name) = rx.recv().await {
-                let podman = podman.clone();
+            let client = kube::Client::try_default()
+                .await
+                .expect("should be able to connect to kuberneter cluster; is it running?");
+            while let Some(namespace) = rx.recv().await {
+                let client = client.clone();
                 // spawn "fire and forget" tasks so the force removes are sent
                 // to podman immediately and without waiting for a server response.
                 tokio::spawn(async move {
-                    if let Err(e) = podman.pods().get(&pod_name).remove().await {
-                        eprintln!("received error while removing pod `{pod_name}`: {e:?}");
-                    }
+                    todo!("destroy namespace and deployment")
                 });
             }
         });
@@ -35,109 +36,154 @@ static STOP_POD_TX: Lazy<UnboundedSender<String>> = Lazy::new(|| {
     tx
 });
 
-#[derive(Template)]
-#[template(path = "sequencer_relayer_stack.yaml.jinja2")]
-struct SequencerRelayerStack<'a> {
-    pod_name: &'a str,
-    celestia_home_volume: &'a str,
-    metro_home_volume: &'a str,
-    scripts_host_volume: &'a str,
-    bridge_host_port: u16,
-    sequencer_host_port: u16,
+#[macro_export]
+macro_rules! init_test {
+    () => {{
+        let test_environment = crate::helper::TestEnvironment::init().await;
+        test_environment
+    }}
 }
 
-pub fn init_environment() -> Podman {
-    #[cfg(target_os = "linux")]
-    let podman_dir = {
-        let uid = users::get_effective_uid();
-        std::path::PathBuf::from(format!("/run/user/{uid}/podman"))
-    };
-    #[cfg(target_os = "macos")]
-    let podman_dir = {
-        let home_dir = home::home_dir().expect("there should always be a homedir on macos");
-        home_dir.join(".local/share/containers/podman/machine/qemu")
-    };
-    if podman_dir.exists() {
-        Podman::unix(podman_dir.join("podman.sock"))
-    } else {
-        panic!("podman socket not found at `{}`", podman_dir.display(),);
-    }
-}
-
-pub struct StackInfo {
-    pub pod_name: String,
-    pub bridge_host_port: u16,
-    pub sequencer_host_port: u16,
+pub struct TestEnvironment {
+    host: String,
+    namespace: String,
     tx: UnboundedSender<String>,
 }
 
-impl StackInfo {
-    pub fn make_bridge_endpoint(&self) -> String {
-        format!("http://127.0.0.1:{}", self.bridge_host_port,)
-    }
+impl TestEnvironment {
+    pub(crate) async fn init() -> Self {
+        let namespace = Uuid::new_v4().simple().to_string();
+        let client = Client::try_default()
+            .await
+            .expect("should be able to connect to kuberneter cluster; is it running?");
+        let discovery = Discovery::new(client.clone())
+            .run()
+            .await
+            .expect("should be able to run discovery against cluster");
+        let documents = crate::helper::multidoc_deserialize(TEST_ENVIRONMENT_YAML)
+            .expect("should have been able to deserialize valid kustomize generated yaml; rerun `just kustomize`?");
 
-    pub fn make_sequencer_endpoint(&self) -> String {
-        format!("http://127.0.0.1:{}", self.sequencer_host_port,)
-    }
-}
+        // Create the unique namespace
+        create_namespace(
+            &namespace,
+            client.clone(),
+            &PostParams {
+                dry_run: false,
+                field_manager: Some("sequencer-relayer-test".to_string()),
+            }
+        ).await;
 
-impl Drop for StackInfo {
-    fn drop(&mut self) {
-        if let Err(e) = self.tx.send(self.pod_name.clone()) {
-            eprintln!(
-                "failed sending pod `{name}` to cleanup task while dropping StackInfo: {e:?}",
-                name = self.pod_name,
-            )
+        // Apply the kustomize-generated kube yaml
+        let ssapply = PatchParams::apply("sequencer-relayer-test").force();
+        for doc in documents {
+            apply_yaml_value(&namespace, client.clone(), doc, &ssapply, &discovery).await;
+        }
+
+        // Set up the ingress rule under the same namespace
+        let mut jinja_env = minijinja::Environment::new();        
+        jinja_env.add_template("ingress.yml", TEST_INGRESS_TEMPLATE).expect("compile-time loaded ingress should be valid jinja");
+        let ingress_template = jinja_env.get_template("ingress.yml").expect("ingress.yml was just loaded, it should exist");
+        let ingress_yaml = serde_yaml::from_str(
+            &ingress_template
+                .render(minijinja::context!(namespace => namespace))
+                .expect("should be able to render the ingress jinja template")
+        ).expect("should be able to parse rendered ingress yaml as serde_yaml Value");
+        apply_yaml_value(&namespace, client.clone(), ingress_yaml, &ssapply, &discovery).await;
+
+        // Wait for the deployment to become available; this usually takes much longer than
+        // setting up ingress rules or anything else.
+        let deployment_api: Api<Deployment> = Api::namespaced(client.clone(), &namespace);
+        await_condition(
+            deployment_api,
+            "sequencer-relayer-environment-deployment",
+            is_deployment_available(),
+        ).await.unwrap();
+        
+        let host = format!("http://{namespace}.localdev.me");
+        Self {
+            host,
+            namespace,
+            tx: Lazy::force(&STOP_POD_TX).clone(),
         }
     }
 }
 
-pub async fn init_stack(podman: &Podman) -> StackInfo {
-    let id = Uuid::new_v4().simple();
-    let pod_name = format!("sequencer_relayer_stack-{id}");
-    let celestia_home_volume = format!("celestia-home-volume-{id}");
-    let metro_home_volume = format!("metro-home-volume-{id}");
-    let bridge_host_port = HOST_PORT.fetch_add(1, Ordering::Relaxed);
-    let sequencer_host_port = HOST_PORT.fetch_add(1, Ordering::Relaxed);
+fn is_deployment_available() -> impl Condition<Deployment> {
+    move |obj: Option<&Deployment>| {
+        if let Some(deployment) = &obj {
+            if let Some(status) = &deployment.status {
+                if let Some(conds) = &status.conditions {
+                    if let Some(dcond) = conds.iter().find(|c| c.type_ == "Available") {
+                        return dcond.status == "True";
+                    }
+                }
+            }
+        }
+        false
+    }
+}
 
-    let scripts_host_volume = format!("{}/containers/", env!("CARGO_MANIFEST_DIR"));
+// impl Drop for TestEnvironment {
+//     fn drop(&mut self) {
+//         if let Err(e) = self.tx.send(self.pod_name.clone()) {
+//             eprintln!(
+//                 "failed sending pod `{name}` to cleanup task while dropping StackInfo: {e:?}",
+//                 name = self.pod_name,
+//             .)
+//         }
+//     }
+// }
 
-    let stack = SequencerRelayerStack {
-        pod_name: &pod_name,
-        celestia_home_volume: &celestia_home_volume,
-        metro_home_volume: &metro_home_volume,
-        scripts_host_volume: &scripts_host_volume,
-        bridge_host_port,
-        sequencer_host_port,
+
+fn multidoc_deserialize(data: &str) -> eyre::Result<Vec<serde_yaml::Value>> {
+    use serde::Deserialize;
+    let mut docs = vec![];
+    for de in serde_yaml::Deserializer::from_str(data) {
+        docs.push(serde_yaml::Value::deserialize(de)?);
+    }
+    Ok(docs)
+}
+
+fn dynamic_api(ar: ApiResource, caps: ApiCapabilities, client: Client, namespace: &str) -> Api<DynamicObject> {
+    if caps.scope == Scope::Cluster {
+        Api::all_with(client, &ar)
+    } else {
+        Api::namespaced_with(client, namespace, &ar)
+    }
+}
+
+async fn apply_yaml_value(namespace: &str, client: Client, document: serde_yaml::Value, ssapply: &PatchParams, discovery: &Discovery) {
+    let obj: DynamicObject = serde_yaml::from_value(document)
+        .expect("should have been able to read valid kustomize generated doc into dynamic object; rerun `just kustomize`?");
+    let gvk = if let Some(tm) = &obj.types {
+        GroupVersionKind::try_from(tm).expect("failed reading group version kind from dynamic object types")
+    } else {
+        panic!("cannot apply object without valid TypeMeta: {obj:?}");
     };
-
-    let pod_kube_yaml = stack.render().unwrap();
-
-    let stack_info = StackInfo {
-        pod_name,
-        bridge_host_port,
-        sequencer_host_port,
-        tx: Lazy::force(&STOP_POD_TX).clone(),
+    let name = obj.name_any();
+    let Some((ar, caps)) = discovery.resolve_gvk(&gvk) else {
+        panic!("cannot apply document for unknown group version kind: {gvk:?}");
     };
-
-    if let Err(e) = podman
-        .play_kubernetes_yaml(&Default::default(), pod_kube_yaml)
+    let api = dynamic_api(ar, caps, client, namespace);
+    let data: serde_json::Value = serde_json::to_value(&obj)
+        .expect("should have been able to turn DynamicObject serde_json Value");
+    let _r = api
+        .patch(&name, ssapply, &Patch::Apply(data))
         .await
-    {
-        eprintln!("failed playing YAML failed on podman: {e:?}");
-        panic!("{e:?}");
-    }
-
-    stack_info
+        .expect("should have been able to apply patch");
 }
 
-pub async fn wait_until_ready(podman: &Podman, id: impl Into<Id>) {
-    let pod = podman.pods().get(id);
-    loop {
-        let resp = pod.inspect().await.unwrap();
-        if resp.state.as_deref() == Some("Running") {
-            break;
+async fn create_namespace(namespace: &str, client: Client, params: &PostParams) {
+    let api: Api<Namespace> = Api::all(client);
+    api.create(
+        params,
+        &Namespace {
+            metadata: ObjectMeta {
+                name: Some(namespace.to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
         }
-        tokio::time::sleep(Duration::from_secs(3)).await;
-    }
+    ).await.expect("should have been able to create a unique namespace; does it exist?");
+    println!("created unique namespace: {namespace}");
 }
