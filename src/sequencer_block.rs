@@ -78,6 +78,16 @@ pub struct SequencerBlock {
 }
 
 impl SequencerBlock {
+    pub fn to_bytes(&self) -> eyre::Result<Vec<u8>> {
+        // TODO: don't use json, use our own serializer (or protobuf for now?)
+        serde_json::to_vec(self).wrap_err("failed serializing signed namespace data to json")
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> eyre::Result<Self> {
+        serde_json::from_slice(bytes)
+            .wrap_err("failed deserializing signed namespace data from bytes")
+    }
+
     /// from_cosmos_block converts a cosmos-sdk block into a SequencerBlock.
     /// it parses the block for SequencerMsgs and namespaces them accordingly.
     pub fn from_cosmos_block(b: Block) -> eyre::Result<Self> {
