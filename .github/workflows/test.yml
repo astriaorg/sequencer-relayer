@@ -44,11 +44,8 @@ jobs:
       - run: just perform-prepull
       - run: just wait-for-ingress-controller
       - run: just wait-for-prepull
-      # - name: Test
-      #   uses: actions-rs/cargo@v1
-      #   with:
-      #     command: test
-      #     args: -- --nocapture --color always
+      - name: Test
+        uses: actions-rs/cargo@v1
 
   fmt:
     name: fmt
