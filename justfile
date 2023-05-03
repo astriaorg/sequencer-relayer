@@ -13,11 +13,13 @@ deploy-ingress-controller:
 perform-prepull:
   kubectl apply -f ./test_environment/prepull-daemon-set.yml
 
+prepare-test-environment: create-cluster deploy-ingress-controller perform-prepull
+
 create-namespace:
   kubectl create namespace test
 
 deploy-test-environment:
-  kubectl apply -n test -k ./test_environmnet/
+  kubectl apply -n test -k ./test_environment/
 
 hit-sequencer:
   curl http://test.localdev.me/sequencer/cosmos/base/tendermint/v1beta1/blocks/latest
@@ -30,3 +32,6 @@ wait-for-prepull:
 
 kustomize:
   kubectl kustomize ./test_environment -o ./test_environment/test-environment.yml
+
+deploy-metrics-server:
+  kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml

@@ -1,7 +1,9 @@
+use std::time::Duration;
+
 use k8s_openapi::api::{core::v1::Namespace, apps::v1::Deployment};
-use kube::{api::{DynamicObject, PatchParams, Patch, PostParams},
+use kube::{api::{DynamicObject, PatchParams, Patch, PostParams, DeleteParams},
 discovery::{ApiCapabilities, ApiResource, Scope},
-Client, Api, Discovery, core::{GroupVersionKind, ObjectMeta}, runtime::wait::{await_condition, conditions, Condition}, ResourceExt};
+Client, Api, Discovery, core::{GroupVersionKind, ObjectMeta}, runtime::wait::{await_condition, Condition}, ResourceExt};
 use once_cell::sync::Lazy;
 use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
@@ -17,18 +19,22 @@ static STOP_POD_TX: Lazy<UnboundedSender<String>> = Lazy::new(|| {
     let _ = std::thread::spawn(move || {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_io()
+            .enable_time()
             .build()
             .unwrap();
         rt.block_on(async move {
-            let client = kube::Client::try_default()
+            let client = Client::try_default()
                 .await
                 .expect("should be able to connect to kuberneter cluster; is it running?");
             while let Some(namespace) = rx.recv().await {
-                let client = client.clone();
                 // spawn "fire and forget" tasks so the force removes are sent
-                // to podman immediately and without waiting for a server response.
+                // to kubernetes immediately and without waiting for a server response.
+                let client = client.clone();
                 tokio::spawn(async move {
-                    todo!("destroy namespace and deployment")
+                    delete_test_environment(
+                        namespace,
+                        client,
+                    ).await
                 });
             }
         });
@@ -36,22 +42,26 @@ static STOP_POD_TX: Lazy<UnboundedSender<String>> = Lazy::new(|| {
     tx
 });
 
-#[macro_export]
-macro_rules! init_test {
-    () => {{
-        let test_environment = crate::helper::TestEnvironment::init().await;
-        test_environment
-    }}
+pub(crate) async fn init_test() -> TestEnvironment {
+    TestEnvironment::init().await
 }
 
 pub struct TestEnvironment {
-    host: String,
-    namespace: String,
-    tx: UnboundedSender<String>,
+    pub host: String,
+    pub namespace: String,
+    pub tx: UnboundedSender<String>,
 }
 
 impl TestEnvironment {
-    pub(crate) async fn init() -> Self {
+    pub(crate) fn bridge_endpoint(&self) -> String {
+        format!("http://{namespace}.localdev.me/bridge", namespace = self.namespace)
+    }
+
+    pub(crate) fn sequencer_endpoint(&self) -> String {
+        format!("http://{namespace}.localdev.me/sequencer", namespace = self.namespace)
+    }
+
+    async fn init() -> Self {
         let namespace = Uuid::new_v4().simple().to_string();
         let client = Client::try_default()
             .await
@@ -80,14 +90,7 @@ impl TestEnvironment {
         }
 
         // Set up the ingress rule under the same namespace
-        let mut jinja_env = minijinja::Environment::new();        
-        jinja_env.add_template("ingress.yml", TEST_INGRESS_TEMPLATE).expect("compile-time loaded ingress should be valid jinja");
-        let ingress_template = jinja_env.get_template("ingress.yml").expect("ingress.yml was just loaded, it should exist");
-        let ingress_yaml = serde_yaml::from_str(
-            &ingress_template
-                .render(minijinja::context!(namespace => namespace))
-                .expect("should be able to render the ingress jinja template")
-        ).expect("should be able to parse rendered ingress yaml as serde_yaml Value");
+        let ingress_yaml = populate_ingress_template(&namespace);
         apply_yaml_value(&namespace, client.clone(), ingress_yaml, &ssapply, &discovery).await;
 
         // Wait for the deployment to become available; this usually takes much longer than
@@ -98,6 +101,10 @@ impl TestEnvironment {
             "sequencer-relayer-environment-deployment",
             is_deployment_available(),
         ).await.unwrap();
+
+        // FIXME: celestia and metro should have some readiness probes to report that
+        //        that they are actually ready to serve requests.
+        tokio::time::sleep(Duration::from_secs(30)).await;
         
         let host = format!("http://{namespace}.localdev.me");
         Self {
@@ -123,16 +130,16 @@ fn is_deployment_available() -> impl Condition<Deployment> {
     }
 }
 
-// impl Drop for TestEnvironment {
-//     fn drop(&mut self) {
-//         if let Err(e) = self.tx.send(self.pod_name.clone()) {
-//             eprintln!(
-//                 "failed sending pod `{name}` to cleanup task while dropping StackInfo: {e:?}",
-//                 name = self.pod_name,
-//             .)
-//         }
-//     }
-// }
+impl Drop for TestEnvironment {
+    fn drop(&mut self) {
+        if let Err(e) = self.tx.send(self.namespace.clone()) {
+            eprintln!(
+                "failed sending kubernetes namespace `{namespace}` to cleanup task while dropping TestEnvironment: {e:?}",
+                namespace = self.namespace,
+            )
+        }
+    }
+}
 
 
 fn multidoc_deserialize(data: &str) -> eyre::Result<Vec<serde_yaml::Value>> {
@@ -173,6 +180,17 @@ async fn apply_yaml_value(namespace: &str, client: Client, document: serde_yaml:
         .expect("should have been able to apply patch");
 }
 
+async fn delete_test_environment(namespace: String, client: Client) {
+    delete_namespace(
+        &namespace,
+        client.clone(),
+        &DeleteParams {
+            grace_period_seconds: Some(0),
+            ..DeleteParams::default()
+        },
+    ).await;
+}
+
 async fn create_namespace(namespace: &str, client: Client, params: &PostParams) {
     let api: Api<Namespace> = Api::all(client);
     api.create(
@@ -184,6 +202,24 @@ async fn create_namespace(namespace: &str, client: Client, params: &PostParams) 
             },
             ..Default::default()
         }
-    ).await.expect("should have been able to create a unique namespace; does it exist?");
-    println!("created unique namespace: {namespace}");
+    ).await.expect("should have been able to create the unique namespace; does it exist?");
+}
+
+async fn delete_namespace(namespace: &str, client: Client, params: &DeleteParams) {
+    let api: Api<Namespace> = Api::all(client);
+    api.delete(
+        namespace,
+        params,
+    ).await.expect("should have been able to delete the unique namespace; does it exist?");
+}
+
+fn populate_ingress_template(namespace: &str) -> serde_yaml::Value {
+        let mut jinja_env = minijinja::Environment::new();
+        jinja_env.add_template("ingress.yml", TEST_INGRESS_TEMPLATE).expect("compile-time loaded ingress should be valid jinja");
+        let ingress_template = jinja_env.get_template("ingress.yml").expect("ingress.yml was just loaded, it should exist");
+        serde_yaml::from_str(
+            &ingress_template
+                .render(minijinja::context!(namespace => namespace))
+                .expect("should be able to render the ingress jinja template")
+        ).expect("should be able to parse rendered ingress yaml as serde_yaml Value")
 }
