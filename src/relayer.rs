@@ -4,7 +4,7 @@ use futures::StreamExt;
 use serde::Deserialize;
 use std::str::FromStr;
 use tokio::{select, sync::watch, time::Interval};
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 use crate::base64_string::Base64String;
 use crate::da::CelestiaClient;
@@ -30,6 +30,7 @@ pub struct KeyWithType {
 pub struct Relayer {
     sequencer_client: SequencerClient,
     da_client: CelestiaClient,
+    disable_writing: bool,
     keypair: ed25519_dalek::Keypair,
     validator_address: String,
     validator_address_bytes: Vec<u8>,
@@ -57,6 +58,7 @@ impl Relayer {
         da_client: CelestiaClient,
         key_file: ValidatorPrivateKeyFile,
         interval: Interval,
+        p2p_port: u16,
     ) -> Result<Self> {
         // generate our private-public keypair
         let keypair = private_key_bytes_to_keypair(
@@ -79,13 +81,18 @@ impl Relayer {
         Ok(Self {
             sequencer_client,
             da_client,
+            disable_writing: false,
             keypair,
             validator_address,
             validator_address_bytes,
-            network: GossipNetwork::new()?,
+            network: GossipNetwork::new(p2p_port)?,
             interval,
             state,
         })
+    }
+
+    pub fn disable_writing(&mut self) {
+        self.disable_writing = true;
     }
 
     pub fn subscribe_to_state(&self) -> watch::Receiver<State> {
@@ -139,25 +146,30 @@ impl Relayer {
 
         self.network.publish(&sequencer_block).await?;
 
+
         let tx_count = sequencer_block.rollup_txs.len() + sequencer_block.sequencer_txs.len();
-        // match self
-        //     .da_client
-        //     .submit_block(sequencer_block, &self.keypair)
-        //     .await
-        // {
-        //     Ok(resp) => {
-        //         new_state
-        //             .current_data_availability_height
-        //             .replace(resp.height);
-        //         info!(
-        //             sequencer_block = height,
-        //             da_layer_block = resp.height,
-        //             tx_count,
-        //             "submitted sequencer block to DA layer",
-        //         );
-        //     }
-        //     Err(e) => warn!(error = ?e, "failed to submit block to DA layer"),
-        // }
+        if self.disable_writing {
+            return Ok(new_state)
+        }
+
+        match self
+            .da_client
+            .submit_block(sequencer_block, &self.keypair)
+            .await
+        {
+            Ok(resp) => {
+                new_state
+                    .current_data_availability_height
+                    .replace(resp.height);
+                info!(
+                    sequencer_block = height,
+                    da_layer_block = resp.height,
+                    tx_count,
+                    "submitted sequencer block to DA layer",
+                );
+            }
+            Err(e) => warn!(error = ?e, "failed to submit block to DA layer"),
+        }
         Ok(new_state)
     }
 

@@ -19,13 +19,17 @@ pub const DEFAULT_CELESTIA_ENDPOINT: &str = "http://localhost:26659";
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// Sequencer node RPC endpoint. Default: http://localhost:1317
+    /// Sequencer node RPC endpoint.
     #[arg(short, long, default_value = DEFAULT_SEQUENCER_ENDPOINT)]
     sequencer_endpoint: String,
 
-    /// Celestia node RPC endpoint. Default: http://localhost:26659
+    /// Celestia node RPC endpoint.
     #[arg(short, long, default_value = DEFAULT_CELESTIA_ENDPOINT)]
     celestia_endpoint: String,
+
+    /// Disable writing the sequencer block to Celestia.
+    #[arg(short, long)]
+    disable_writing: bool,
 
     /// Expected block time of the sequencer in milliseconds;
     /// ie. how often we should poll the sequencer.
@@ -36,9 +40,13 @@ struct Args {
     #[arg(short, long, default_value = ".metro/config/priv_validator_key.json")]
     validator_key_file: String,
 
-    /// RPC port to listen on. Default: 2450
+    /// RPC port to listen on. 
     #[arg(short, long, default_value = "2450")]
     rpc_port: u16,
+
+    /// P2P port to listen on.
+    #[arg(short, long, default_value = "33900")]
+    p2p_port: u16,
 
     /// Log level. One of debug, info, warn, or error
     #[arg(short, long, default_value = "info")]
@@ -73,8 +81,11 @@ async fn main() {
     let sleep_duration = time::Duration::from_millis(args.block_time);
     let interval = tokio::time::interval(sleep_duration);
 
-    let mut relayer = Relayer::new(sequencer_client, da_client, key_file, interval)
+    let mut relayer = Relayer::new(sequencer_client, da_client, key_file, interval, args.p2p_port)
         .expect("failed to create relayer");
+    if args.disable_writing {
+        relayer.disable_writing();
+    }
     let relayer_state = relayer.subscribe_to_state();
 
     let _api_server_task = tokio::task::spawn(async move {
@@ -83,9 +94,4 @@ async fn main() {
     });
 
     relayer.run().await;
-
-    // loop {
-    //     interval.tick().await;
-    //     relayer.run().await;
-    // }
 }
