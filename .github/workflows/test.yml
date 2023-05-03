@@ -31,7 +31,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --no-run
+          args: --release --no-run
       - name: create kubernetes in docker cluster
         uses: helm/kind-action@v1.5.0
         with:
@@ -46,6 +46,9 @@ jobs:
       - run: just wait-for-prepull
       - name: Test
         uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --release
 
   fmt:
     name: fmt
