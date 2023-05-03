@@ -146,10 +146,9 @@ impl Relayer {
 
         self.network.publish(&sequencer_block).await?;
 
-
         let tx_count = sequencer_block.rollup_txs.len() + sequencer_block.sequencer_txs.len();
         if self.disable_writing {
-            return Ok(new_state)
+            return Ok(new_state);
         }
 
         match self

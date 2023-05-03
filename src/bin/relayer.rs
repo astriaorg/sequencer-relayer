@@ -40,7 +40,7 @@ struct Args {
     #[arg(short, long, default_value = ".metro/config/priv_validator_key.json")]
     validator_key_file: String,
 
-    /// RPC port to listen on. 
+    /// RPC port to listen on.
     #[arg(short, long, default_value = "2450")]
     rpc_port: u16,
 
@@ -81,8 +81,14 @@ async fn main() {
     let sleep_duration = time::Duration::from_millis(args.block_time);
     let interval = tokio::time::interval(sleep_duration);
 
-    let mut relayer = Relayer::new(sequencer_client, da_client, key_file, interval, args.p2p_port)
-        .expect("failed to create relayer");
+    let mut relayer = Relayer::new(
+        sequencer_client,
+        da_client,
+        key_file,
+        interval,
+        args.p2p_port,
+    )
+    .expect("failed to create relayer");
     if args.disable_writing {
         relayer.disable_writing();
     }
