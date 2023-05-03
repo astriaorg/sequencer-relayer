@@ -1,5 +1,5 @@
-use sequencer_relayer::sequencer::SequencerClient;
 use crate::helper::init_test;
+use sequencer_relayer::sequencer::SequencerClient;
 
 #[tokio::test]
 async fn test_header_to_tendermint_header() {

@@ -1,5 +1,5 @@
-use sequencer_relayer::{sequencer::SequencerClient, transaction};
 use crate::helper::init_test;
+use sequencer_relayer::{sequencer::SequencerClient, transaction};
 
 #[tokio::test]
 async fn txs_to_data_hash() {
