@@ -123,7 +123,7 @@ impl TestEnvironment {
 
         // FIXME: celestia and metro should have some readiness probes to report that
         //        that they are actually ready to serve requests.
-        tokio::time::sleep(Duration::from_secs(30)).await;
+        tokio::time::sleep(Duration::from_secs(40)).await;
 
         let host = format!("http://{namespace}.localdev.me");
         Self {

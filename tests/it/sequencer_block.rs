@@ -2,6 +2,7 @@ use crate::helper::init_test;
 use sequencer_relayer::{sequencer::SequencerClient, sequencer_block::SequencerBlock};
 
 #[tokio::test]
+#[ignore = "very slow init of test environment"]
 async fn header_verify_hashes() {
     let test_env = init_test().await;
     let sequencer_endpoint = test_env.sequencer_endpoint();

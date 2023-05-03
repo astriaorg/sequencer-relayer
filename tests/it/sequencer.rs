@@ -2,6 +2,7 @@ use crate::helper::init_test;
 use sequencer_relayer::sequencer::SequencerClient;
 
 #[tokio::test]
+#[ignore = "very slow init of test environment"]
 async fn get_latest_block() {
     let test_env = init_test().await;
     let sequencer_endpoint = test_env.sequencer_endpoint();
@@ -11,6 +12,7 @@ async fn get_latest_block() {
 }
 
 #[tokio::test]
+#[ignore = "very slow init of test environment"]
 async fn get_block() {
     let test_env = init_test().await;
     let sequencer_endpoint = test_env.sequencer_endpoint();

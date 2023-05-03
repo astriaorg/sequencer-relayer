@@ -2,6 +2,7 @@ use crate::helper::init_test;
 use sequencer_relayer::sequencer::SequencerClient;
 
 #[tokio::test]
+#[ignore = "very slow init of test environment"]
 async fn test_header_to_tendermint_header() {
     let test_env = init_test().await;
     let sequencer_endpoint = test_env.sequencer_endpoint();

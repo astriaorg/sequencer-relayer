@@ -32,6 +32,11 @@ jobs:
         with:
           command: test
           args: --release --no-run
+      - name: Run fast tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --release
       - name: create kubernetes in docker cluster
         uses: helm/kind-action@v1.5.0
         with:
@@ -44,11 +49,11 @@ jobs:
       - run: just perform-prepull
       - run: just wait-for-ingress-controller
       - run: just wait-for-prepull
-      - name: Test
+      - name: Run slow tests
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --release
+          args: --release -- --ignored
 
   fmt:
     name: fmt

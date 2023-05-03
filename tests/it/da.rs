@@ -11,6 +11,7 @@ use sequencer_relayer::{
 use crate::helper::init_test;
 
 #[tokio::test]
+#[ignore = "very slow init of test environment"]
 async fn get_latest_height() {
     let test_env = init_test().await;
     let bridge_endpoint = test_env.bridge_endpoint();
@@ -20,6 +21,7 @@ async fn get_latest_height() {
 }
 
 #[tokio::test]
+#[ignore = "very slow init of test environment"]
 async fn get_blocks_public_key_filter() {
     // test that get_blocks only gets blocked signed with a specific key
 
@@ -57,6 +59,7 @@ async fn get_blocks_public_key_filter() {
 }
 
 #[tokio::test]
+#[ignore = "very slow init of test environment"]
 async fn celestia_client() {
     // test submit_block
     let test_env = init_test().await;
