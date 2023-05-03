@@ -12,12 +12,12 @@ use once_cell::sync::Lazy;
 use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
-const TEST_ENVIRONMENT_YAML: &'static str = include_str!(concat!(
+const TEST_ENVIRONMENT_YAML: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/test_environment/test-environment.yml"
 ));
 
-const TEST_INGRESS_TEMPLATE: &'static str = include_str!(concat!(
+const TEST_INGRESS_TEMPLATE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/test_environment/ingress.yml.j2"
 ));
