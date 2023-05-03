@@ -6,12 +6,16 @@ license = "MIT OR Apache-2.0"
 rust-version = "1.65"
 
 [dependencies]
+axum = "0.6.16"
 base64 = "0.21"
 bech32 = "0.9"
+clap = { version = "4.1.9", features = ["derive"] }
 dirs = "5.0"
 ed25519-dalek = "1.0"
 eyre = "0.6"
 hex = "0.4"
+http = "0.2.9"
+futures = "0.3"
 gossipnet = { git = "https://github.com/astriaorg/gossipnet", futures = [ "mdns" ], rev = "e916e4b0d4a0caa6fea68f721d4a4a8660a46af6" }
 prost = "0.11"
 prost-types = "0.11"
@@ -19,14 +23,12 @@ rand = { version = "0.7", features = [ "getrandom" ] }
 reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+serde_with = { version = "3.0", features = [ "json" ] }
 sha2 = "0.10"
 tendermint = "0.30"
 tokio = { version = "1.24", features = [ "macros", "rt-multi-thread" ] }
 tracing = "0.1"
 tracing-subscriber = "0.2.15"
-clap = { version = "4.1.9", features = ["derive"] }
-axum = "0.6.16"
-http = "0.2.9"
 
 [dependencies.rs-cnc]
 git = "https://github.com/astriaorg/rs-cnc.git"

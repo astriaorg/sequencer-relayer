@@ -29,7 +29,7 @@ struct Args {
 
     /// Expected block time of the sequencer in milliseconds;
     /// ie. how often we should poll the sequencer.
-    #[arg(short, long, default_value = "1000")]
+    #[arg(short, long, default_value = "3000")]
     block_time: u64,
 
     /// Path to validator private key file.
@@ -71,10 +71,10 @@ async fn main() {
         .expect("failed to create data availability client");
 
     let sleep_duration = time::Duration::from_millis(args.block_time);
-    let mut interval = tokio::time::interval(sleep_duration);
+    let interval = tokio::time::interval(sleep_duration);
 
-    let mut relayer =
-        Relayer::new(sequencer_client, da_client, key_file).expect("failed to create relayer");
+    let mut relayer = Relayer::new(sequencer_client, da_client, key_file, interval)
+        .expect("failed to create relayer");
     let relayer_state = relayer.subscribe_to_state();
 
     let _api_server_task = tokio::task::spawn(async move {
@@ -82,8 +82,10 @@ async fn main() {
         api::start(api_addr, relayer_state).await;
     });
 
-    loop {
-        interval.tick().await;
-        relayer.run().await;
-    }
+    relayer.run().await;
+
+    // loop {
+    //     interval.tick().await;
+    //     relayer.run().await;
+    // }
 }

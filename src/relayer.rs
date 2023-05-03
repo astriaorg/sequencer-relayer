@@ -1,9 +1,10 @@
 use bech32::{self, ToBase32, Variant};
 use eyre::Result;
+use futures::StreamExt;
 use serde::Deserialize;
 use std::str::FromStr;
-use tokio::sync::watch;
-use tracing::{info, warn};
+use tokio::{select, sync::watch, time::Interval};
+use tracing::{debug, info, warn};
 
 use crate::base64_string::Base64String;
 use crate::da::CelestiaClient;
@@ -33,6 +34,7 @@ pub struct Relayer {
     validator_address: String,
     validator_address_bytes: Vec<u8>,
     network: GossipNetwork,
+    interval: Interval,
 
     state: watch::Sender<State>,
 }
@@ -54,6 +56,7 @@ impl Relayer {
         sequencer_client: SequencerClient,
         da_client: CelestiaClient,
         key_file: ValidatorPrivateKeyFile,
+        interval: Interval,
     ) -> Result<Self> {
         // generate our private-public keypair
         let keypair = private_key_bytes_to_keypair(
@@ -80,6 +83,7 @@ impl Relayer {
             validator_address,
             validator_address_bytes,
             network: GossipNetwork::new()?,
+            interval,
             state,
         })
     }
@@ -136,34 +140,45 @@ impl Relayer {
         self.network.publish(&sequencer_block).await?;
 
         let tx_count = sequencer_block.rollup_txs.len() + sequencer_block.sequencer_txs.len();
-        match self
-            .da_client
-            .submit_block(sequencer_block, &self.keypair)
-            .await
-        {
-            Ok(resp) => {
-                new_state
-                    .current_data_availability_height
-                    .replace(resp.height);
-                info!(
-                    sequencer_block = height,
-                    da_layer_block = resp.height,
-                    tx_count,
-                    "submitted sequencer block to DA layer",
-                );
-            }
-            Err(e) => warn!(error = ?e, "failed to submit block to DA layer"),
-        }
+        // match self
+        //     .da_client
+        //     .submit_block(sequencer_block, &self.keypair)
+        //     .await
+        // {
+        //     Ok(resp) => {
+        //         new_state
+        //             .current_data_availability_height
+        //             .replace(resp.height);
+        //         info!(
+        //             sequencer_block = height,
+        //             da_layer_block = resp.height,
+        //             tx_count,
+        //             "submitted sequencer block to DA layer",
+        //         );
+        //     }
+        //     Err(e) => warn!(error = ?e, "failed to submit block to DA layer"),
+        // }
         Ok(new_state)
     }
 
     pub async fn run(&mut self) {
-        match self.get_and_submit_latest_block().await {
-            Err(e) => warn!(error = ?e, "failed to get latest block from sequencer"),
-            Ok(new_state) if new_state != *self.state.borrow() => {
-                _ = self.state.send_replace(new_state);
+        loop {
+            select! {
+                _ = self.interval.tick() => {
+                    match self.get_and_submit_latest_block().await {
+                        Err(e) => warn!(error = ?e, "failed to get latest block from sequencer"),
+                        Ok(new_state) if new_state != *self.state.borrow() => {
+                            _ = self.state.send_replace(new_state);
+                        }
+                        Ok(_) => {}
+                    }
+                },
+                event = self.network.0.next() => {
+                    if let Some(event) = event {
+                        info!(?event, "got event from network");
+                    }
+                },
             }
-            Ok(_) => {}
         }
     }
 }

@@ -3,6 +3,7 @@ use eyre::{bail, ensure, WrapErr as _};
 use hex;
 use prost::{DecodeError, Message};
 use serde::{Deserialize, Serialize};
+use serde_json;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use tracing::debug;
@@ -68,12 +69,14 @@ pub struct IndexedTransaction {
 ///
 /// NOTE: all transactions in this structure are full transaction bytes as received
 /// from tendermint.
+#[serde_with::serde_as]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SequencerBlock {
     pub block_hash: Base64String,
     pub header: Header,
     pub sequencer_txs: Vec<IndexedTransaction>,
     /// namespace -> rollup txs
+    #[serde_as(as = "HashMap<serde_with::json::JsonString, _>")]
     pub rollup_txs: HashMap<Namespace, Vec<IndexedTransaction>>,
 }
 
