@@ -16,7 +16,7 @@ eyre = "0.6"
 hex = "0.4"
 http = "0.2.9"
 futures = "0.3"
-gossipnet = { git = "https://github.com/astriaorg/gossipnet", futures = [ "mdns" ], rev = "e916e4b0d4a0caa6fea68f721d4a4a8660a46af6" }
+gossipnet = { git = "https://github.com/astriaorg/gossipnet", features = [ "mdns" ], rev = "e916e4b0d4a0caa6fea68f721d4a4a8660a46af6" }
 prost = "0.11"
 prost-types = "0.11"
 rand = { version = "0.7", features = [ "getrandom" ] }
