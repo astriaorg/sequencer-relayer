@@ -264,7 +264,9 @@ fn populate_ingress_template(namespace: &str) -> serde_yaml::Value {
 }
 
 async fn wait_until_bridge_is_available(namespace: &str) {
-    let client = reqwest::Client::builder().build().expect("building a basic reqwest client should never fail");
+    let client = reqwest::Client::builder()
+        .build()
+        .expect("building a basic reqwest client should never fail");
     let url = reqwest::Url::parse(&format!("http://{namespace}.localdev.me/bridge/header/1"))
         .expect("bridge endpoint should be a valid url");
     loop {
