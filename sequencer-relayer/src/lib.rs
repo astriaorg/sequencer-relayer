@@ -6,6 +6,8 @@ pub(crate) mod network;
 pub mod relayer;
 pub mod sequencer;
 pub mod sequencer_block;
+#[cfg(test)]
+pub mod tests;
 pub mod transaction;
 pub mod types;
 
