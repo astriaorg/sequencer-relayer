@@ -19,24 +19,26 @@ impl GossipNetwork {
         Ok(Self { network, block_rx })
     }
 
-    pub async fn run(&mut self) {
-        loop {
-            select! {
-                block = self.block_rx.recv() => {
-                    if let Some(block) = block {
-                        match self.publish(&block).await {
-                            Ok(()) => info!("published block to network"),
-                            Err(e) => warn!(?e, "failed to publish block to network"),
-                        };
-                    }
-                },
-                event = self.network.next() => {
-                    if let Some(event) = event {
-                        info!(?event, "got event from network");
-                    }
-                },
+    pub fn run(mut self) {
+        tokio::task::spawn(async move {
+            loop {
+                select! {
+                    block = self.block_rx.recv() => {
+                        if let Some(block) = block {
+                            match self.publish(&block).await {
+                                Ok(()) => info!("published block to network"),
+                                Err(e) => warn!(?e, "failed to publish block to network"),
+                            };
+                        }
+                    },
+                    event = self.network.next() => {
+                        if let Some(event) = event {
+                            info!(?event, "got event from network");
+                        }
+                    },
+                }
             }
-        }
+        });
     }
 
     async fn publish(&mut self, block: &SequencerBlock) -> Result<()> {
