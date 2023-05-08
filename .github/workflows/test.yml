@@ -1,5 +1,6 @@
 name: Tests
-
+env:
+  CI: true
 on:
   workflow_dispatch:
   push:
