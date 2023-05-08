@@ -106,7 +106,7 @@ pub fn get_namespace(bytes: &[u8]) -> Namespace {
 /// it was originally in in the sequencer block.
 /// This is required so that the block's `data_hash`, which is a merkle root
 /// of the transactions in the block, can be verified.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct IndexedTransaction {
     pub index: usize,
     pub transaction: Base64String,
@@ -121,13 +121,13 @@ pub struct IndexedTransaction {
 /// NOTE: all transactions in this structure are full transaction bytes as received
 /// from tendermint.
 #[serde_with::serde_as]
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub struct SequencerBlock {
     pub block_hash: Base64String,
     pub header: Header,
     pub sequencer_txs: Vec<IndexedTransaction>,
     /// namespace -> rollup txs
-    #[serde_as(as = "HashMap<serde_with::json::JsonString, _>")]
+    // #[serde_as(as = "HashMap<serde_with::json::JsonString, _>")]
     pub rollup_txs: HashMap<Namespace, Vec<IndexedTransaction>>,
 }
 
