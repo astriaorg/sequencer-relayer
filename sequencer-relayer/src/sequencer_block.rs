@@ -2,10 +2,13 @@ use base64::{engine::general_purpose, Engine as _};
 use eyre::{bail, ensure, WrapErr as _};
 use hex;
 use prost::{DecodeError, Message};
-use serde::{Deserialize, Serialize};
+use serde::{
+    de::{self, Visitor},
+    Deserialize, Deserializer, Serialize,
+};
 use serde_json;
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 use tracing::debug;
 
 use sequencer_relayer_proto::{SequencerMsg, TxBody, TxRaw};
@@ -23,13 +26,61 @@ static SEQUENCER_TYPE_URL: &str = "/SequencerMsg";
 pub static DEFAULT_NAMESPACE: Namespace = Namespace(*b"astriasq");
 
 /// Namespace represents a Celestia namespace.
-#[derive(Clone, Deserialize, Serialize, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Namespace([u8; 8]);
 
 impl std::fmt::Display for Namespace {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // FIXME: `hex::encode` does an extra allocation which could be removed
         f.write_str(&hex::encode(self.0))
+    }
+}
+
+impl Serialize for Namespace {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&hex::encode(self.0))
+    }
+}
+
+impl<'de> Deserialize<'de> for Namespace {
+    fn deserialize<D>(deserializer: D) -> Result<Namespace, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_string(NamespaceVisitor)
+    }
+}
+
+struct NamespaceVisitor;
+
+impl NamespaceVisitor {
+    fn decode_string<E>(self, value: &str) -> Result<Namespace, E>
+    where
+        E: de::Error,
+    {
+        Namespace::from_string(value).map_err(|e| de::Error::custom(e.to_string()))
+    }
+}
+
+impl<'de> Visitor<'de> for NamespaceVisitor {
+    type Value = Namespace;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("a base64-encoded string")
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        self.decode_string(value)
+    }
+
+    fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        self.decode_string(&value)
     }
 }
 
