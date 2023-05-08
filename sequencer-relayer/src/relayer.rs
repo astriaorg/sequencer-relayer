@@ -1,15 +1,16 @@
 use bech32::{self, ToBase32, Variant};
 use eyre::Result;
-use futures::StreamExt;
 use serde::Deserialize;
 use std::str::FromStr;
-use tokio::{select, sync::watch, time::Interval};
+use tokio::{
+    sync::{mpsc::UnboundedSender, watch},
+    time::Interval,
+};
 use tracing::{info, warn};
 
 use crate::base64_string::Base64String;
 use crate::da::CelestiaClient;
 use crate::keys::{private_key_bytes_to_keypair, validator_hex_to_address};
-use crate::network::GossipNetwork;
 use crate::sequencer::SequencerClient;
 use crate::sequencer_block::SequencerBlock;
 
@@ -34,8 +35,8 @@ pub struct Relayer {
     keypair: ed25519_dalek::Keypair,
     validator_address: String,
     validator_address_bytes: Vec<u8>,
-    network: GossipNetwork,
     interval: Interval,
+    block_tx: UnboundedSender<SequencerBlock>,
 
     state: watch::Sender<State>,
 }
@@ -58,7 +59,7 @@ impl Relayer {
         da_client: CelestiaClient,
         key_file: ValidatorPrivateKeyFile,
         interval: Interval,
-        p2p_port: u16,
+        block_tx: UnboundedSender<SequencerBlock>,
     ) -> Result<Self> {
         // generate our private-public keypair
         let keypair = private_key_bytes_to_keypair(
@@ -85,8 +86,8 @@ impl Relayer {
             keypair,
             validator_address,
             validator_address_bytes,
-            network: GossipNetwork::new(p2p_port)?,
             interval,
+            block_tx,
             state,
         })
     }
@@ -99,7 +100,7 @@ impl Relayer {
         self.state.subscribe()
     }
 
-    async fn get_and_submit_latest_block(&mut self) -> eyre::Result<State> {
+    async fn get_and_submit_latest_block(&self) -> eyre::Result<State> {
         let mut new_state = (*self.state.borrow()).clone();
         let resp = self.sequencer_client.get_latest_block().await?;
 
@@ -144,7 +145,7 @@ impl Relayer {
             }
         };
 
-        self.network.publish(&sequencer_block).await?;
+        self.block_tx.send(sequencer_block.clone())?;
 
         let tx_count = sequencer_block.rollup_txs.len() + sequencer_block.sequencer_txs.len();
         if self.disable_writing {
@@ -174,21 +175,13 @@ impl Relayer {
 
     pub async fn run(&mut self) {
         loop {
-            select! {
-                _ = self.interval.tick() => {
-                    match self.get_and_submit_latest_block().await {
-                        Err(e) => warn!(error = ?e, "failed to get latest block from sequencer"),
-                        Ok(new_state) if new_state != *self.state.borrow() => {
-                            _ = self.state.send_replace(new_state);
-                        }
-                        Ok(_) => {}
-                    }
-                },
-                event = self.network.0.next() => {
-                    if let Some(event) = event {
-                        info!(?event, "got event from network");
-                    }
-                },
+            self.interval.tick().await;
+            match self.get_and_submit_latest_block().await {
+                Err(e) => warn!(error = ?e, "failed to get latest block from sequencer"),
+                Ok(new_state) if new_state != *self.state.borrow() => {
+                    _ = self.state.send_replace(new_state);
+                }
+                Ok(_) => {}
             }
         }
     }

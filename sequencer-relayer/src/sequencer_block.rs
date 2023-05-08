@@ -121,7 +121,7 @@ pub struct IndexedTransaction {
 /// NOTE: all transactions in this structure are full transaction bytes as received
 /// from tendermint.
 #[serde_with::serde_as]
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct SequencerBlock {
     pub block_hash: Base64String,
     pub header: Header,

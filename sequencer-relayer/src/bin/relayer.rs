@@ -8,6 +8,7 @@ use std::{net::SocketAddr, time};
 use sequencer_relayer::{
     api,
     da::CelestiaClient,
+    network::GossipNetwork,
     relayer::{Relayer, ValidatorPrivateKeyFile},
     sequencer::SequencerClient,
 };
@@ -81,14 +82,18 @@ async fn main() {
     let sleep_duration = time::Duration::from_millis(args.block_time);
     let interval = tokio::time::interval(sleep_duration);
 
-    let mut relayer = Relayer::new(
-        sequencer_client,
-        da_client,
-        key_file,
-        interval,
-        args.p2p_port,
-    )
-    .expect("failed to create relayer");
+    let (block_tx, block_rx) = tokio::sync::mpsc::unbounded_channel();
+
+    let mut network =
+        GossipNetwork::new(args.p2p_port, block_rx).expect("failed to create network");
+
+    tokio::task::spawn(async move {
+        network.run().await;
+    });
+
+    let mut relayer = Relayer::new(sequencer_client, da_client, key_file, interval, block_tx)
+        .expect("failed to create relayer");
+
     if args.disable_writing {
         relayer.disable_writing();
     }
