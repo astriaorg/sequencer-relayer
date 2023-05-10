@@ -1,8 +1,8 @@
 use eyre::Result;
 use futures::StreamExt;
 use gossipnet::network::{Network, NetworkBuilder, Sha256Topic};
-use tokio::{select, sync::mpsc::UnboundedReceiver};
-use tracing::{info, warn};
+use tokio::{select, sync::mpsc::UnboundedReceiver, task::JoinHandle};
+use tracing::{debug, warn};
 
 use crate::sequencer_block::SequencerBlock;
 
@@ -19,26 +19,26 @@ impl GossipNetwork {
         Ok(Self { network, block_rx })
     }
 
-    pub fn run(mut self) {
+    pub fn run(mut self) -> JoinHandle<()> {
         tokio::task::spawn(async move {
             loop {
                 select! {
                     block = self.block_rx.recv() => {
                         if let Some(block) = block {
                             match self.publish(&block).await {
-                                Ok(()) => info!("published block to network"),
+                                Ok(()) => debug!(block_hash = ?block.block_hash, "published block to network"),
                                 Err(e) => warn!(?e, "failed to publish block to network"),
                             };
                         }
                     },
                     event = self.network.next() => {
                         if let Some(event) = event {
-                            info!(?event, "got event from network");
+                            debug!(?event, "got event from network");
                         }
                     },
                 }
             }
-        });
+        })
     }
 
     async fn publish(&mut self, block: &SequencerBlock) -> Result<()> {

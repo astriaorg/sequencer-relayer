@@ -85,7 +85,7 @@ async fn main() {
     let (block_tx, block_rx) = tokio::sync::mpsc::unbounded_channel();
 
     let network = GossipNetwork::new(args.p2p_port, block_rx).expect("failed to create network");
-    network.run();
+    let network_handle = network.run();
 
     let mut relayer = Relayer::new(sequencer_client, da_client, key_file, interval, block_tx)
         .expect("failed to create relayer");
@@ -93,12 +93,14 @@ async fn main() {
     if args.disable_writing {
         relayer.disable_writing();
     }
+
     let relayer_state = relayer.subscribe_to_state();
+    let relayer_handle = relayer.run();
 
     let _api_server_task = tokio::task::spawn(async move {
         let api_addr = SocketAddr::from(([127, 0, 0, 1], args.rpc_port));
         api::start(api_addr, relayer_state).await;
     });
 
-    relayer.run().await;
+    tokio::try_join!(relayer_handle, network_handle).expect("failed to join tasks");
 }

@@ -29,6 +29,16 @@ pub static DEFAULT_NAMESPACE: Namespace = Namespace(*b"astriasq");
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Namespace([u8; 8]);
 
+impl Namespace {
+    pub fn from_string(s: &str) -> eyre::Result<Self> {
+        let bytes = hex::decode(s).wrap_err("failed reading string as hex encoded bytes")?;
+        ensure!(bytes.len() == 8, "string must encode exactly 8 bytes",);
+        let mut namespace = [0u8; 8];
+        namespace.copy_from_slice(&bytes);
+        Ok(Namespace(namespace))
+    }
+}
+
 impl std::fmt::Display for Namespace {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // FIXME: `hex::encode` does an extra allocation which could be removed
@@ -58,7 +68,7 @@ impl NamespaceVisitor {
     where
         E: de::Error,
     {
-        Namespace::from_string(value).map_err(|e| de::Error::custom(e.to_string()))
+        Namespace::from_string(value).map_err(|e| de::Error::custom(format!("{e:?}")))
     }
 }
 
@@ -66,7 +76,7 @@ impl<'de> Visitor<'de> for NamespaceVisitor {
     type Value = Namespace;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str("a base64-encoded string")
+        formatter.write_str("a string containing 8 hex-encoded bytes")
     }
 
     fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
@@ -81,16 +91,6 @@ impl<'de> Visitor<'de> for NamespaceVisitor {
         E: de::Error,
     {
         self.decode_string(&value)
-    }
-}
-
-impl Namespace {
-    pub fn from_string(s: &str) -> eyre::Result<Self> {
-        let bytes = hex::decode(s).wrap_err("failed reading string as hex encoded bytes")?;
-        ensure!(bytes.len() == 8, "string must encode exactly 8 bytes",);
-        let mut namespace = [0u8; 8];
-        namespace.copy_from_slice(&bytes);
-        Ok(Namespace(namespace))
     }
 }
 
@@ -127,7 +127,6 @@ pub struct SequencerBlock {
     pub header: Header,
     pub sequencer_txs: Vec<IndexedTransaction>,
     /// namespace -> rollup txs
-    // #[serde_as(as = "HashMap<serde_with::json::JsonString, _>")]
     pub rollup_txs: HashMap<Namespace, Vec<IndexedTransaction>>,
 }
 
@@ -259,6 +258,7 @@ pub fn cosmos_tx_body_to_sequencer_msgs(tx_body: TxBody) -> eyre::Result<Vec<Seq
 mod test {
     use super::{cosmos_tx_body_to_sequencer_msgs, parse_cosmos_tx, SEQUENCER_TYPE_URL};
     use crate::base64_string::Base64String;
+    use crate::sequencer_block::SequencerBlock;
 
     #[test]
     fn test_parse_primary_tx() {
@@ -280,5 +280,13 @@ mod test {
         assert_eq!(sequencer_msgs.len(), 1);
         assert_eq!(sequencer_msgs[0].chain_id, "aaa".as_bytes());
         assert_eq!(sequencer_msgs[0].data, "hello".as_bytes());
+    }
+
+    #[test]
+    fn sequencer_block_to_bytes() {
+        let bytes = Base64String::from_string("eyJibG9ja19oYXNoIjoiME1WemxhU0ErdnJ2WDNFREVEaFlDb1dSNVFJb1U2RGlmSzQyR3dtbVBQYz0iLCJoZWFkZXIiOnsidmVyc2lvbiI6eyJibG9jayI6IjExIiwiYXBwIjoiMCJ9LCJjaGFpbl9pZCI6InRlc3QiLCJoZWlnaHQiOiI2IiwidGltZSI6IjIwMjMtMDUtMDlUMjM6MzU6MzEuNDYyNzc4ODkwWiIsImxhc3RfYmxvY2tfaWQiOnsiaGFzaCI6IlZKWTJmc3B0Mldjc1NzQis4SkZuWHNIeXJ4aURtZXE2clp2Mmh3YkduWE09IiwicGFydF9zZXRfaGVhZGVyIjp7InRvdGFsIjoxLCJoYXNoIjoidUhIRzdPWXlSMHFUbTJUbS9Mb1JrSlhoSEVBRzdyMEV3T1dXMnNEZ3RRRT0ifX0sImxhc3RfY29tbWl0X2hhc2giOiJ0S2JpRENCbHA3bDlHckl1Sk0rYUJsZTZ0SzI0bENRRXozMENBWEFCRDFnPSIsImRhdGFfaGFzaCI6IjQ3REVRcGo4SEJTYSsvVEltVys1SkNldVFlUmttNU5NcEpXWkczaFN1RlU9IiwidmFsaWRhdG9yc19oYXNoIjoiVlJFdWljS3BlejlSTENKSlVFQ01RUk5IQUw0Ym9Ta1dVL1kvSWZXd3Nodz0iLCJuZXh0X3ZhbGlkYXRvcnNfaGFzaCI6IlZSRXVpY0twZXo5UkxDSkpVRUNNUVJOSEFMNGJvU2tXVS9ZL0lmV3dzaHc9IiwiY29uc2Vuc3VzX2hhc2giOiJCSUNSdkgzY0tEOTN2NytSMXp4RTJsakQzNHFjdklaMEJkaTM4OXF0b2k4PSIsImFwcF9oYXNoIjoiM3lmZitvRk83WU9Iem5TRGNYd2tuMHVVbmtzUGdXQTEwNFYwdHlFMkdxVT0iLCJsYXN0X3Jlc3VsdHNfaGFzaCI6IjQ3REVRcGo4SEJTYSsvVEltVys1SkNldVFlUmttNU5NcEpXWkczaFN1RlU9IiwiZXZpZGVuY2VfaGFzaCI6IjQ3REVRcGo4SEJTYSsvVEltVys1SkNldVFlUmttNU5NcEpXWkczaFN1RlU9IiwicHJvcG9zZXJfYWRkcmVzcyI6IjN0NWkvRlZJVHhoSXBlV0N4RFRBMEh6bjNGOD0ifSwic2VxdWVuY2VyX3R4cyI6W10sInJvbGx1cF90eHMiOnt9fQ==".to_string()).unwrap();
+        let sequencer_block = SequencerBlock::from_bytes(&bytes.0).unwrap();
+        let bytes2 = sequencer_block.to_bytes().unwrap();
+        assert_eq!(bytes.0, bytes2);
     }
 }

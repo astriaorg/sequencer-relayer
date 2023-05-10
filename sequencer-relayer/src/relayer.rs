@@ -4,6 +4,7 @@ use serde::Deserialize;
 use std::str::FromStr;
 use tokio::{
     sync::{mpsc::UnboundedSender, watch},
+    task::JoinHandle,
     time::Interval,
 };
 use tracing::{info, warn};
@@ -173,16 +174,18 @@ impl Relayer {
         Ok(new_state)
     }
 
-    pub async fn run(&mut self) {
-        loop {
-            self.interval.tick().await;
-            match self.get_and_submit_latest_block().await {
-                Err(e) => warn!(error = ?e, "failed to get latest block from sequencer"),
-                Ok(new_state) if new_state != *self.state.borrow() => {
-                    _ = self.state.send_replace(new_state);
+    pub fn run(mut self) -> JoinHandle<()> {
+        tokio::task::spawn(async move {
+            loop {
+                self.interval.tick().await;
+                match self.get_and_submit_latest_block().await {
+                    Err(e) => warn!(error = ?e, "failed to get latest block from sequencer"),
+                    Ok(new_state) if new_state != *self.state.borrow() => {
+                        _ = self.state.send_replace(new_state);
+                    }
+                    Ok(_) => {}
                 }
-                Ok(_) => {}
             }
-        }
+        })
     }
 }

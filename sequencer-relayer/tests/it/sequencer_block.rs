@@ -13,17 +13,3 @@ async fn header_verify_hashes() {
     sequencer_block.verify_data_hash().unwrap();
     sequencer_block.verify_block_hash().unwrap();
 }
-
-#[tokio::test]
-#[ignore = "very slow init of test environment"]
-async fn sequencer_block_to_bytes() {
-    let test_env = init_test().await;
-    let sequencer_endpoint = test_env.sequencer_endpoint();
-    let client = SequencerClient::new(sequencer_endpoint).unwrap();
-
-    let resp = client.get_latest_block().await.unwrap();
-    let sequencer_block = SequencerBlock::from_cosmos_block(resp.block).unwrap();
-    let bytes = sequencer_block.to_bytes().unwrap();
-    let sequencer_block2 = SequencerBlock::from_bytes(&bytes).unwrap();
-    assert_eq!(sequencer_block, sequencer_block2);
-}
