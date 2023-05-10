@@ -11,8 +11,8 @@ use crate::base64_string::Base64String;
 use crate::sequencer_block::{IndexedTransaction, Namespace, SequencerBlock, DEFAULT_NAMESPACE};
 use crate::types::Header;
 
-static DEFAULT_PFD_FEE: i64 = 2_000;
-static DEFAULT_PFD_GAS_LIMIT: u64 = 90_000;
+pub const DEFAULT_PFD_GAS_LIMIT: u64 = 1_000_000;
+const DEFAULT_PFD_FEE: i64 = 2_000;
 
 /// SubmitBlockResponse is the response to a SubmitBlock request.
 /// It contains a map of namespaces to the block number that it was written to.
@@ -121,6 +121,7 @@ impl NamespaceData for RollupNamespaceData {}
 /// CelestiaClient is a DataAvailabilityClient that submits blocks to a Celestia Node.
 pub struct CelestiaClient {
     client: CelestiaNodeClient,
+    gas_limit: u64,
 }
 
 impl CelestiaClient {
@@ -132,7 +133,16 @@ impl CelestiaClient {
             .base_url(endpoint)
             .build()
             .wrap_err("failed creating celestia node client")?;
-        Ok(CelestiaClient { client: cnc })
+        Ok(CelestiaClient {
+            client: cnc,
+            gas_limit: DEFAULT_PFD_GAS_LIMIT,
+        })
+    }
+
+    /// sets the gas limit to be used for PFDs.
+    pub fn with_gas_limit(mut self, gas_limit: u64) -> Self {
+        self.gas_limit = gas_limit;
+        self
     }
 
     pub async fn get_latest_height(&self) -> eyre::Result<u64> {
@@ -158,7 +168,7 @@ impl CelestiaClient {
                 namespace,
                 &data.to_vec().into(),
                 DEFAULT_PFD_FEE,
-                DEFAULT_PFD_GAS_LIMIT,
+                self.gas_limit,
             )
             .await
             .wrap_err("failed submitting pay for data to client")?;

@@ -27,6 +27,10 @@ struct Args {
     #[arg(short, long, default_value = DEFAULT_CELESTIA_ENDPOINT)]
     celestia_endpoint: String,
 
+    /// Gas limit for transactions sent to Celestia.
+    #[arg(short, long, default_value = "1_000_000")]
+    gas_limit: u64,
+
     /// Expected block time of the sequencer in milliseconds;
     /// ie. how often we should poll the sequencer.
     #[arg(short, long, default_value = "1000")]
@@ -68,7 +72,8 @@ async fn main() {
     let sequencer_client =
         SequencerClient::new(args.sequencer_endpoint).expect("failed to create sequencer client");
     let da_client = CelestiaClient::new(args.celestia_endpoint)
-        .expect("failed to create data availability client");
+        .expect("failed to create data availability client")
+        .with_gas_limit(args.gas_limit);
 
     let sleep_duration = time::Duration::from_millis(args.block_time);
     let mut interval = tokio::time::interval(sleep_duration);
