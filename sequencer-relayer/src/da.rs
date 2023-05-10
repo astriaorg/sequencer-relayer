@@ -11,7 +11,7 @@ use crate::base64_string::Base64String;
 use crate::sequencer_block::{IndexedTransaction, Namespace, SequencerBlock, DEFAULT_NAMESPACE};
 use crate::types::Header;
 
-pub const DEFAULT_PFD_GAS_LIMIT: u64 = 1_000_000;
+const DEFAULT_PFD_GAS_LIMIT: u64 = 1_000_000;
 const DEFAULT_PFD_FEE: i64 = 2_000;
 
 /// SubmitBlockResponse is the response to a SubmitBlock request.
