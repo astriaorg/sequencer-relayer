@@ -131,6 +131,7 @@ impl CelestiaClient {
     pub fn new(endpoint: String) -> eyre::Result<Self> {
         let cnc = CelestiaNodeClient::builder()
             .base_url(endpoint)
+            .wrap_err("failed to set base URL for celestia node client; bad URL?")?
             .build()
             .wrap_err("failed creating celestia node client")?;
         Ok(CelestiaClient {
