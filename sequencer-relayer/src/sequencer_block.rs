@@ -39,8 +39,8 @@ impl Namespace {
     }
 }
 
-impl std::fmt::Display for Namespace {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for Namespace {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
         // FIXME: `hex::encode` does an extra allocation which could be removed
         f.write_str(&hex::encode(self.0))
     }
@@ -120,7 +120,6 @@ pub struct IndexedTransaction {
 ///
 /// NOTE: all transactions in this structure are full transaction bytes as received
 /// from tendermint.
-#[serde_with::serde_as]
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct SequencerBlock {
     pub block_hash: Base64String,
@@ -256,9 +255,12 @@ pub fn cosmos_tx_body_to_sequencer_msgs(tx_body: TxBody) -> eyre::Result<Vec<Seq
 
 #[cfg(test)]
 mod test {
-    use super::{cosmos_tx_body_to_sequencer_msgs, parse_cosmos_tx, SEQUENCER_TYPE_URL};
-    use crate::base64_string::Base64String;
-    use crate::sequencer_block::SequencerBlock;
+    use super::{
+        cosmos_tx_body_to_sequencer_msgs, parse_cosmos_tx, Header, SequencerBlock,
+        DEFAULT_NAMESPACE, SEQUENCER_TYPE_URL,
+    };
+    use crate::{base64_string::Base64String, sequencer_block::IndexedTransaction};
+    use std::collections::HashMap;
 
     #[test]
     fn test_parse_primary_tx() {
@@ -284,9 +286,28 @@ mod test {
 
     #[test]
     fn sequencer_block_to_bytes() {
-        let bytes = Base64String::from_string("eyJibG9ja19oYXNoIjoiME1WemxhU0ErdnJ2WDNFREVEaFlDb1dSNVFJb1U2RGlmSzQyR3dtbVBQYz0iLCJoZWFkZXIiOnsidmVyc2lvbiI6eyJibG9jayI6IjExIiwiYXBwIjoiMCJ9LCJjaGFpbl9pZCI6InRlc3QiLCJoZWlnaHQiOiI2IiwidGltZSI6IjIwMjMtMDUtMDlUMjM6MzU6MzEuNDYyNzc4ODkwWiIsImxhc3RfYmxvY2tfaWQiOnsiaGFzaCI6IlZKWTJmc3B0Mldjc1NzQis4SkZuWHNIeXJ4aURtZXE2clp2Mmh3YkduWE09IiwicGFydF9zZXRfaGVhZGVyIjp7InRvdGFsIjoxLCJoYXNoIjoidUhIRzdPWXlSMHFUbTJUbS9Mb1JrSlhoSEVBRzdyMEV3T1dXMnNEZ3RRRT0ifX0sImxhc3RfY29tbWl0X2hhc2giOiJ0S2JpRENCbHA3bDlHckl1Sk0rYUJsZTZ0SzI0bENRRXozMENBWEFCRDFnPSIsImRhdGFfaGFzaCI6IjQ3REVRcGo4SEJTYSsvVEltVys1SkNldVFlUmttNU5NcEpXWkczaFN1RlU9IiwidmFsaWRhdG9yc19oYXNoIjoiVlJFdWljS3BlejlSTENKSlVFQ01RUk5IQUw0Ym9Ta1dVL1kvSWZXd3Nodz0iLCJuZXh0X3ZhbGlkYXRvcnNfaGFzaCI6IlZSRXVpY0twZXo5UkxDSkpVRUNNUVJOSEFMNGJvU2tXVS9ZL0lmV3dzaHc9IiwiY29uc2Vuc3VzX2hhc2giOiJCSUNSdkgzY0tEOTN2NytSMXp4RTJsakQzNHFjdklaMEJkaTM4OXF0b2k4PSIsImFwcF9oYXNoIjoiM3lmZitvRk83WU9Iem5TRGNYd2tuMHVVbmtzUGdXQTEwNFYwdHlFMkdxVT0iLCJsYXN0X3Jlc3VsdHNfaGFzaCI6IjQ3REVRcGo4SEJTYSsvVEltVys1SkNldVFlUmttNU5NcEpXWkczaFN1RlU9IiwiZXZpZGVuY2VfaGFzaCI6IjQ3REVRcGo4SEJTYSsvVEltVys1SkNldVFlUmttNU5NcEpXWkczaFN1RlU9IiwicHJvcG9zZXJfYWRkcmVzcyI6IjN0NWkvRlZJVHhoSXBlV0N4RFRBMEh6bjNGOD0ifSwic2VxdWVuY2VyX3R4cyI6W10sInJvbGx1cF90eHMiOnt9fQ==".to_string()).unwrap();
-        let sequencer_block = SequencerBlock::from_bytes(&bytes.0).unwrap();
-        let bytes2 = sequencer_block.to_bytes().unwrap();
-        assert_eq!(bytes.0, bytes2);
+        let mut expected = SequencerBlock {
+            block_hash: Base64String::from_string(
+                "Ojskac/Fi5G00alQZms+tdtIox53cWWjBmIGEnWG1+M=".to_string(),
+            )
+            .unwrap(),
+            header: Header::default(),
+            sequencer_txs: vec![IndexedTransaction {
+                index: 0,
+                transaction: Base64String::from_bytes(&[0x11, 0x22, 0x33]),
+            }],
+            rollup_txs: HashMap::new(),
+        };
+        expected.rollup_txs.insert(
+            DEFAULT_NAMESPACE.clone(),
+            vec![IndexedTransaction {
+                index: 0,
+                transaction: Base64String::from_bytes(&[0x44, 0x55, 0x66]),
+            }],
+        );
+
+        let bytes = expected.to_bytes().unwrap();
+        let actual = SequencerBlock::from_bytes(&bytes).unwrap();
+        assert_eq!(expected, actual);
     }
 }
