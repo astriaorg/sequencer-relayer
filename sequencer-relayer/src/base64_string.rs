@@ -18,7 +18,7 @@ impl Base64String {
     }
 }
 
-impl std::fmt::Display for Base64String {
+impl fmt::Display for Base64String {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", general_purpose::STANDARD.encode(&self.0))
     }

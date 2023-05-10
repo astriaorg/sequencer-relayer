@@ -40,7 +40,7 @@ impl Namespace {
 }
 
 impl fmt::Display for Namespace {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // FIXME: `hex::encode` does an extra allocation which could be removed
         f.write_str(&hex::encode(self.0))
     }
