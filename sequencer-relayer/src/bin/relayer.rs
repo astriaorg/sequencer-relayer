@@ -8,6 +8,7 @@ use std::{net::SocketAddr, time};
 use sequencer_relayer::{
     api,
     da::CelestiaClientBuilder,
+    da::DEFAULT_PFD_GAS_LIMIT,
     network::GossipNetwork,
     relayer::{Relayer, ValidatorPrivateKeyFile},
     sequencer::SequencerClient,
@@ -29,7 +30,7 @@ struct Args {
     celestia_endpoint: String,
 
     /// Gas limit for transactions sent to Celestia.
-    #[arg(short, long, default_value = "1_000_000")]
+    #[arg(short, long, default_value_t = DEFAULT_PFD_GAS_LIMIT)]
     gas_limit: u64,
 
     /// Disable writing the sequencer block to Celestia.
