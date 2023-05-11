@@ -118,6 +118,40 @@ struct RollupNamespaceData {
 
 impl NamespaceData for RollupNamespaceData {}
 
+pub struct CelestiaClientBuilder {
+    endpoint: String,
+    gas_limit: Option<u64>,
+}
+
+impl CelestiaClientBuilder {
+    pub fn new(endpoint: String) -> Self {
+        Self {
+            endpoint,
+            gas_limit: None,
+        }
+    }
+
+    pub fn build(self) -> eyre::Result<CelestiaClient> {
+        let cnc = CelestiaNodeClient::builder()
+            .base_url(self.endpoint)
+            .wrap_err("failed to set base URL for celestia node client; bad URL?")?
+            .build()
+            .wrap_err("failed creating celestia node client")?;
+        Ok(CelestiaClient {
+            client: cnc,
+            gas_limit: self.gas_limit.unwrap_or(DEFAULT_PFD_GAS_LIMIT),
+        })
+    }
+
+    /// sets the gas limit to be used for PFDs.
+    pub fn gas_limit(self, gas_limit: u64) -> Self {
+        Self {
+            gas_limit: Some(gas_limit),
+            ..self
+        }
+    }
+}
+
 /// CelestiaClient is a DataAvailabilityClient that submits blocks to a Celestia Node.
 pub struct CelestiaClient {
     client: CelestiaNodeClient,
@@ -125,27 +159,6 @@ pub struct CelestiaClient {
 }
 
 impl CelestiaClient {
-    /// new creates a new CelestiaClient with the given keypair.
-    /// the keypair is used to sign the data that is submitted to Celestia,
-    /// specifically within submit_block.
-    pub fn new(endpoint: String) -> eyre::Result<Self> {
-        let cnc = CelestiaNodeClient::builder()
-            .base_url(endpoint)
-            .wrap_err("failed to set base URL for celestia node client; bad URL?")?
-            .build()
-            .wrap_err("failed creating celestia node client")?;
-        Ok(CelestiaClient {
-            client: cnc,
-            gas_limit: DEFAULT_PFD_GAS_LIMIT,
-        })
-    }
-
-    /// sets the gas limit to be used for PFDs.
-    pub fn with_gas_limit(mut self, gas_limit: u64) -> Self {
-        self.gas_limit = gas_limit;
-        self
-    }
-
     pub async fn get_latest_height(&self) -> eyre::Result<u64> {
         let res = self
             .client
