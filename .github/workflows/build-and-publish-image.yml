@@ -50,7 +50,7 @@ jobs:
             type=ref,event=pr,suffix=-debug,enable=${{ matrix.distroless_tag == 'debug' }}
             type=semver,suffix=-debug,pattern={{major}}.{{minor}}.{{patch}},enable=${{ matrix.distroless_tag == 'debug' }}
             type=sha,suffix=-debug,enable=${{ matrix.distroless_tag == 'debug' }}
-            # set latest tag for `master` branch, but never
+            # set latest tag for `master` branch, but never for images based on distroless debug
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' && matrix.distroless_tag == 'latest' }}
       - name: Build and push
         uses: docker/build-push-action@v4
